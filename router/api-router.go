@@ -224,14 +224,20 @@ func SetApiRouter(router *gin.Engine) {
 			ratioSyncRoute.GET("/channels", controller.GetSyncableChannels)
 			ratioSyncRoute.POST("/fetch", controller.FetchUpstreamRatios)
 		}
+		// 渠道只读接口：普通用户(role>=1)可访问。写操作仍在下方 AdminAuth/RootAuth 分组。
+		channelReadRoute := apiRouter.Group("/channel")
+		channelReadRoute.Use(middleware.UserAuth())
+		{
+			channelReadRoute.GET("/", controller.GetAllChannels)
+			channelReadRoute.GET("/search", controller.SearchChannels)
+			channelReadRoute.GET("/models", controller.ChannelListModels)
+			channelReadRoute.GET("/models_enabled", controller.EnabledListModels)
+			channelReadRoute.GET("/:id", controller.GetChannel)
+			channelReadRoute.GET("/tag/models", controller.GetTagModels)
+		}
 		channelRoute := apiRouter.Group("/channel")
 		channelRoute.Use(middleware.AdminAuth())
 		{
-			channelRoute.GET("/", controller.GetAllChannels)
-			channelRoute.GET("/search", controller.SearchChannels)
-			channelRoute.GET("/models", controller.ChannelListModels)
-			channelRoute.GET("/models_enabled", controller.EnabledListModels)
-			channelRoute.GET("/:id", controller.GetChannel)
 			channelRoute.POST("/:id/key", middleware.RootAuth(), middleware.CriticalRateLimit(), middleware.DisableCache(), middleware.SecureVerificationRequired(), controller.GetChannelKey)
 			channelRoute.GET("/test", controller.TestAllChannels)
 			channelRoute.GET("/test/:id", controller.TestChannel)
@@ -259,7 +265,6 @@ func SetApiRouter(router *gin.Engine) {
 			channelRoute.DELETE("/ollama/delete", controller.OllamaDeleteModel)
 			channelRoute.GET("/ollama/version/:id", controller.OllamaVersion)
 			channelRoute.POST("/batch/tag", controller.BatchSetChannelTag)
-			channelRoute.GET("/tag/models", controller.GetTagModels)
 			channelRoute.POST("/copy/:id", controller.CopyChannel)
 			channelRoute.POST("/multi_key/manage", controller.ManageMultiKeys)
 			channelRoute.POST("/upstream_updates/apply", controller.ApplyChannelUpstreamModelUpdates)

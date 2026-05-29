@@ -180,6 +180,7 @@ func GetAllChannels(c *gin.Context) {
 
 	for _, datum := range channelData {
 		clearChannelInfo(datum)
+		sanitizeChannelForRole(c, datum)
 	}
 
 	countQuery := buildChannelListQuery(groupFilter, statusFilter, -1)
@@ -386,6 +387,7 @@ func SearchChannels(c *gin.Context) {
 
 	for _, datum := range pagedData {
 		clearChannelInfo(datum)
+		sanitizeChannelForRole(c, datum)
 	}
 
 	c.JSON(http.StatusOK, gin.H{
@@ -413,6 +415,7 @@ func GetChannel(c *gin.Context) {
 	}
 	if channel != nil {
 		clearChannelInfo(channel)
+		sanitizeChannelForRole(c, channel)
 	}
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
