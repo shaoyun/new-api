@@ -69,6 +69,27 @@ func clearChannelInfo(channel *model.Channel) {
 	}
 }
 
+// sanitizeChannelForRole 按调用者角色对渠道响应做脱敏。
+// admin/root(role >= RoleAdminUser)不做任何处理，保持完整数据。
+// 普通用户(role < RoleAdminUser)清空敏感字段：key 与 setting.proxy。
+// 注意：header_override / param_override 按产品决定不脱敏，保持原样。
+func sanitizeChannelForRole(c *gin.Context, channel *model.Channel) {
+	if channel == nil {
+		return
+	}
+	if c.GetInt("role") >= common.RoleAdminUser {
+		return
+	}
+	// 清空密钥(DB 层已 Omit("key")，此处为双保险，覆盖任何遗漏路径)
+	channel.Key = ""
+	// 清空代理地址
+	setting := channel.GetSetting()
+	if setting.Proxy != "" {
+		setting.Proxy = ""
+		channel.SetSetting(setting)
+	}
+}
+
 func applyChannelStatusFilter(query *gorm.DB, statusFilter int) *gorm.DB {
 	if statusFilter == common.ChannelStatusEnabled {
 		return query.Where("status = ?", common.ChannelStatusEnabled)
