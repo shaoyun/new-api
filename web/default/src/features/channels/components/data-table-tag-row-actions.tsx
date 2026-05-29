@@ -40,10 +40,11 @@ interface DataTableTagRowActionsProps {
 export function DataTableTagRowActions({ row }: DataTableTagRowActionsProps) {
   const { t } = useTranslation()
   const tag = row.original.tag
-  const { setOpen, setCurrentTag } = useChannels()
+  const { setOpen, setCurrentTag, canManage } = useChannels()
   const queryClient = useQueryClient()
 
   if (!tag) return null
+  if (!canManage) return null
 
   const handleEnableAll = () => {
     handleEnableTagChannels(tag, queryClient)

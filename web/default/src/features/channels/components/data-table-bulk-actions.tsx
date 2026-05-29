@@ -45,6 +45,7 @@ import {
   handleBatchSetTag,
 } from '../lib'
 import type { Channel } from '../types'
+import { useChannels } from './channels-provider'
 
 interface DataTableBulkActionsProps<TData> {
   table: Table<TData>
@@ -54,6 +55,7 @@ export function DataTableBulkActions<TData>({
   table,
 }: DataTableBulkActionsProps<TData>) {
   const { t } = useTranslation()
+  const { canManage } = useChannels()
   const queryClient = useQueryClient()
   const [showTagDialog, setShowTagDialog] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
@@ -96,6 +98,8 @@ export function DataTableBulkActions<TData>({
       handleClearSelection()
     })
   }
+
+  if (!canManage) return null
 
   return (
     <>
