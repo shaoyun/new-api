@@ -50,10 +50,19 @@ export function useSidebarView(): ResolvedSidebarView {
   const configFilteredRoot = useSidebarConfig(rootSidebarData.navGroups)
 
   const rootNavGroups = useMemo<NavGroup[]>(() => {
-    const isAdmin = userRole !== undefined && userRole >= ROLE.ADMIN
-    return configFilteredRoot.filter((group) =>
-      group.id === 'admin' ? isAdmin : true
-    )
+    const role = userRole ?? ROLE.GUEST
+    return configFilteredRoot
+      .map((group) => {
+        if (group.id !== 'admin') return group
+        // admin 组逐项过滤：项自带 minRole 用其值，否则默认要求 ADMIN
+        const items = group.items.filter((item) => {
+          const required =
+            typeof item.minRole === 'number' ? item.minRole : ROLE.ADMIN
+          return role >= required
+        })
+        return { ...group, items }
+      })
+      .filter((group) => group.items.length > 0)
   }, [configFilteredRoot, userRole])
 
   const view = resolveSidebarView(pathname)

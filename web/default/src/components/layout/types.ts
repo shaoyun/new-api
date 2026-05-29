@@ -28,6 +28,8 @@ type BaseNavItem = {
   icon?: React.ElementType
   activeUrls?: (LinkProps['to'] | (string & {}))[]
   configUrls?: (LinkProps['to'] | (string & {}))[]
+  /** 最低可见角色(数值，对应 ROLE.*)。未设置时该项归属其所在分组的默认角色门控。 */
+  minRole?: number
 }
 
 /**
