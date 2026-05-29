@@ -22,6 +22,8 @@ import { useQueryClient } from '@tanstack/react-query'
 import { useChannelUpstreamUpdates } from '../hooks/use-channel-upstream-updates'
 import { channelsQueryKeys } from '../lib'
 import type { Channel } from '../types'
+import { useAuthStore } from '@/stores/auth-store'
+import { ROLE } from '@/lib/roles'
 
 // ============================================================================
 // Types
@@ -53,6 +55,8 @@ type ChannelsContextType = {
   setEnableTagMode: (enabled: boolean) => void
   idSort: boolean
   setIdSort: (enabled: boolean) => void
+  /** 当前用户是否可执行渠道写操作(role >= ADMIN)。普通用户为 false → 只读。 */
+  canManage: boolean
   upstream: UpstreamUpdateState
 }
 
@@ -85,6 +89,9 @@ export function ChannelsProvider({ children }: { children: React.ReactNode }) {
   }, [queryClient])
   const upstream = useChannelUpstreamUpdates(refreshChannels)
 
+  const userRole = useAuthStore((s) => s.auth.user?.role)
+  const canManage = (userRole ?? ROLE.GUEST) >= ROLE.ADMIN
+
   return (
     <ChannelsContext.Provider
       value={{
@@ -98,6 +105,7 @@ export function ChannelsProvider({ children }: { children: React.ReactNode }) {
         setEnableTagMode,
         idSort,
         setIdSort,
+        canManage,
         upstream,
       }}
     >
