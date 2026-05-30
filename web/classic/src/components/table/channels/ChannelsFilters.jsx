@@ -20,6 +20,7 @@ For commercial licensing, please contact support@quantumnous.com
 import React from 'react';
 import { Button, Form } from '@douyinfe/semi-ui';
 import { IconSearch } from '@douyinfe/semi-icons';
+import { isAdmin } from '../../../helpers';
 
 const ChannelsFilters = ({
   setEditingChannel,
@@ -39,20 +40,22 @@ const ChannelsFilters = ({
   return (
     <div className='flex flex-col md:flex-row justify-between items-center gap-2 w-full'>
       <div className='flex gap-2 w-full md:w-auto order-2 md:order-1'>
-        <Button
-          size='small'
-          theme='light'
-          type='primary'
-          className='w-full md:w-auto'
-          onClick={() => {
-            setEditingChannel({
-              id: undefined,
-            });
-            setShowEdit(true);
-          }}
-        >
-          {t('添加渠道')}
-        </Button>
+        {isAdmin() && (
+          <Button
+            size='small'
+            theme='light'
+            type='primary'
+            className='w-full md:w-auto'
+            onClick={() => {
+              setEditingChannel({
+                id: undefined,
+              });
+              setShowEdit(true);
+            }}
+          >
+            {t('添加渠道')}
+          </Button>
+        )}
 
         <Button
           size='small'

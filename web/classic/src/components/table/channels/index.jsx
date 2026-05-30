@@ -35,6 +35,7 @@ import EditTagModal from './modals/EditTagModal';
 import MultiKeyManageModal from './modals/MultiKeyManageModal';
 import ChannelUpstreamUpdateModal from './modals/ChannelUpstreamUpdateModal';
 import { createCardProPagination } from '../../../helpers/utils';
+import { isAdmin } from '../../../helpers';
 
 const ChannelsPage = () => {
   const channelsData = useChannelsData();
@@ -55,6 +56,7 @@ const ChannelsPage = () => {
         visible={channelsData.showEdit}
         handleClose={channelsData.closeEdit}
         editingChannel={channelsData.editingChannel}
+        readOnly={!isAdmin()}
       />
       <BatchTagModal {...channelsData} />
       <ModelTestModal {...channelsData} />

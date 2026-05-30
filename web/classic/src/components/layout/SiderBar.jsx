@@ -151,7 +151,9 @@ const SiderBar = ({ onNavigate = () => {} }) => {
         text: t('渠道管理'),
         itemKey: 'channel',
         to: '/channel',
-        className: isAdmin() ? '' : 'tableHiddle',
+        // 渠道管理对所有登录用户可见：普通用户只读查看（写操作在页面内按角色隐藏，
+        // 后端写接口仍要求管理员权限）。仅此一项放开，其余管理项保持管理员门控。
+        className: '',
       },
       {
         text: t('订阅管理'),

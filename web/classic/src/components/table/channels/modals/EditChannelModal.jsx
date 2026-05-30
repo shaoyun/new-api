@@ -164,6 +164,9 @@ const EditChannelModal = (props) => {
   const { t } = useTranslation();
   const channelId = props.editingChannel.id;
   const isEdit = channelId !== undefined;
+  // 只读模式：普通用户查看渠道详情时为 true（由调用方传入 readOnly={!isAdmin()}）。
+  // 默认 false，管理员的编辑行为完全不受影响。
+  const readOnly = props.readOnly === true;
   const [loading, setLoading] = useState(isEdit);
   const isMobile = useIsMobile();
   const handleCancel = () => {
@@ -1306,8 +1309,12 @@ const EditChannelModal = (props) => {
   }, [originModelOptions, inputs.models, t]);
 
   useEffect(() => {
+    // /api/channel/models 为 UserAuth，普通用户可访问，保留。
     fetchModels().then();
-    fetchGroups().then();
+    // /api/group/ 为 AdminAuth，只读模式下跳过，避免普通用户 403 与错误提示。
+    if (!readOnly) {
+      fetchGroups().then();
+    }
     if (!isEdit) {
       initialBaseUrlRef.current = '';
       setInputs(originInputs);
@@ -1342,7 +1349,10 @@ const EditChannelModal = (props) => {
           }).catch(() => {});
         } catch {}
       }
-      fetchModelGroups();
+      // /api/prefill_group 为 AdminAuth，只读模式下跳过，避免普通用户 403。
+      if (!readOnly) {
+        fetchModelGroups();
+      }
       // 重置手动输入模式状态
       setUseManualInput(false);
       // 编辑模式下恢复用户偏好，创建模式一律折叠
@@ -2182,20 +2192,22 @@ const EditChannelModal = (props) => {
         width={isMobile ? '100%' : 600}
         footer={
           <div className='flex justify-end items-center gap-2'>
-            <Button
-              theme='solid'
-              onClick={() => formApiRef.current?.submitForm()}
-              icon={<IconSave />}
-            >
-              {t('提交')}
-            </Button>
+            {!readOnly && (
+              <Button
+                theme='solid'
+                onClick={() => formApiRef.current?.submitForm()}
+                icon={<IconSave />}
+              >
+                {t('提交')}
+              </Button>
+            )}
             <Button
               theme='light'
               type='primary'
               onClick={handleCancel}
               icon={<IconClose />}
             >
-              {t('取消')}
+              {readOnly ? t('关闭') : t('取消')}
             </Button>
           </div>
         }
@@ -2205,6 +2217,7 @@ const EditChannelModal = (props) => {
         <Form
           key={isEdit ? 'edit' : 'new'}
           initValues={originInputs}
+          disabled={readOnly}
           getFormApi={(api) => (formApiRef.current = api)}
           onSubmit={submit}
         >

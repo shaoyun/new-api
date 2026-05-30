@@ -38,6 +38,7 @@ import {
   showSuccess,
   showError,
   showInfo,
+  isAdmin,
 } from '../../../helpers';
 import {
   CHANNEL_OPTIONS,
@@ -583,6 +584,7 @@ export const getChannelsColumns = ({
               <InputNumber
                 style={{ width: 70 }}
                 name='priority'
+                disabled={!isAdmin()}
                 onBlur={(e) => {
                   manageChannel(record.id, 'priority', record, e.target.value);
                 }}
@@ -599,6 +601,7 @@ export const getChannelsColumns = ({
             <InputNumber
               style={{ width: 70 }}
               name='priority'
+              disabled={!isAdmin()}
               keepFocus={true}
               onBlur={(e) => {
                 Modal.warning({
@@ -638,6 +641,7 @@ export const getChannelsColumns = ({
               <InputNumber
                 style={{ width: 70 }}
                 name='weight'
+                disabled={!isAdmin()}
                 onBlur={(e) => {
                   manageChannel(record.id, 'weight', record, e.target.value);
                 }}
@@ -654,6 +658,7 @@ export const getChannelsColumns = ({
             <InputNumber
               style={{ width: 70 }}
               name='weight'
+              disabled={!isAdmin()}
               keepFocus={true}
               onBlur={(e) => {
                 Modal.warning({
@@ -688,6 +693,25 @@ export const getChannelsColumns = ({
       dataIndex: 'operate',
       fixed: 'right',
       render: (text, record, index) => {
+        // 普通用户：只读视图。行内仅提供「查看」入口（以只读模式打开渠道详情）；
+        // 标签聚合行无操作。管理员分支完全保持原样。
+        if (!isAdmin()) {
+          if (record.children !== undefined) {
+            return null;
+          }
+          return (
+            <Button
+              size='small'
+              type='tertiary'
+              onClick={() => {
+                setEditingChannel(record);
+                setShowEdit(true);
+              }}
+            >
+              {t('查看')}
+            </Button>
+          );
+        }
         if (record.children === undefined) {
           const upstreamUpdateMeta = getUpstreamUpdateMeta(record);
           const moreMenuItems = [

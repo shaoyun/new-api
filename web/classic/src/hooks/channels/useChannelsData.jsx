@@ -27,6 +27,7 @@ import {
   loadChannelModels,
   copy,
   toBoolean,
+  isAdmin,
 } from '../../helpers';
 import {
   CHANNEL_OPTIONS,
@@ -163,9 +164,14 @@ export const useChannelsData = () => {
       .catch((reason) => {
         showError(reason);
       });
-    fetchGroups().then();
-    loadChannelModels().then();
-    fetchGlobalPassThroughEnabled().then();
+    // 以下元数据接口仅管理员可访问（/api/group、/api/models 为 AdminAuth，
+    // /api/option 为 RootAuth）。普通用户跳过，避免 403 与错误提示。
+    // 渠道列表/搜索接口已对普通用户开放（UserAuth），不受影响。
+    if (isAdmin()) {
+      fetchGroups().then();
+      loadChannelModels().then();
+      fetchGlobalPassThroughEnabled().then();
+    }
   }, []);
 
   // Column visibility management

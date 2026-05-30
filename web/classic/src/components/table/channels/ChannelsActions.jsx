@@ -27,6 +27,7 @@ import {
   Select,
 } from '@douyinfe/semi-ui';
 import CompactModeToggle from '../../common/ui/CompactModeToggle';
+import { isAdmin } from '../../../helpers';
 
 const ChannelsActions = ({
   enableBatchDelete,
@@ -58,6 +59,11 @@ const ChannelsActions = ({
   setActivePage,
   t,
 }) => {
+  // 批量操作栏（批量删除/标签/测试/更新余额/修复）及相关设置开关仅管理员可用。
+  // 普通用户为只读视图，整栏不渲染（管理员渲染路径不变）。
+  if (!isAdmin()) {
+    return null;
+  }
   return (
     <div className='flex flex-col gap-2'>
       {/* 第一行：批量操作按钮 + 设置开关 */}
