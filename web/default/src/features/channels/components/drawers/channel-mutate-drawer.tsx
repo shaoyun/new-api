@@ -277,7 +277,7 @@ export function ChannelMutateDrawer({
 }: ChannelMutateDrawerProps) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
-  const { setOpen } = useChannels()
+  const { setOpen, canManage } = useChannels()
   const [fetchModelsDialogOpen, setFetchModelsDialogOpen] = useState(false)
   const [channelKey, setChannelKey] = useState<string | null>(null)
   const [isChannelKeyLoading, setIsChannelKeyLoading] = useState(false)
@@ -303,6 +303,7 @@ export function ChannelMutateDrawer({
   const [paramOverrideEditorOpen, setParamOverrideEditorOpen] = useState(false)
 
   const isEditing = Boolean(currentRow)
+  const readOnly = !canManage
   const channelId = currentRow?.id ?? null
 
   // Fetch channel details if editing
@@ -1040,7 +1041,11 @@ export function ChannelMutateDrawer({
                 {getLobeIcon(`${getChannelTypeIcon(currentType)}.Color`, 22)}
               </span>
               <span>
-                {isEditing ? t('Edit Channel') : t('Create Channel')}
+                {readOnly
+                  ? t('View Channel')
+                  : isEditing
+                    ? t('Edit Channel')
+                    : t('Create Channel')}
                 <span className='text-muted-foreground ml-2 text-sm font-normal'>
                   {t(currentTypeLabel)}
                 </span>
@@ -1063,6 +1068,7 @@ export function ChannelMutateDrawer({
               onSubmit={form.handleSubmit(onSubmit)}
               className={sideDrawerFormClassName('gap-5')}
             >
+              <fieldset disabled={readOnly} className='contents'>
               {isChannelDetailLoading ? (
                 <ChannelEditorLoadingState />
               ) : (
@@ -3377,6 +3383,7 @@ export function ChannelMutateDrawer({
                   </ChannelAdvancedSection>
                 </>
               )}
+              </fieldset>
             </form>
           </Form>
 
@@ -3384,14 +3391,16 @@ export function ChannelMutateDrawer({
             <SheetClose
               render={<Button variant='outline' disabled={isSubmitting} />}
             >
-              {t('Cancel')}
+              {readOnly ? t('Close') : t('Cancel')}
             </SheetClose>
-            <Button form='channel-form' type='submit' disabled={isSubmitting}>
-              {isSubmitting && (
-                <Loader2 className='mr-2 h-4 w-4 animate-spin' />
-              )}
-              {isEditing ? t('Update Channel') : t('Save changes')}
-            </Button>
+            {!readOnly && (
+              <Button form='channel-form' type='submit' disabled={isSubmitting}>
+                {isSubmitting && (
+                  <Loader2 className='mr-2 h-4 w-4 animate-spin' />
+                )}
+                {isEditing ? t('Update Channel') : t('Save changes')}
+              </Button>
+            )}
           </SheetFooter>
         </SheetContent>
       </Sheet>
