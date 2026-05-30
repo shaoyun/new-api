@@ -26,6 +26,7 @@ import {
   showWarning,
   verifyJSON,
   selectFilter,
+  isAdmin,
 } from '../../../../helpers';
 import {
   SideSheet,
@@ -310,7 +311,11 @@ const EditTagModal = (props) => {
     };
 
     fetchModels().then();
-    fetchGroups().then();
+    // /api/group/ 为 AdminAuth。该弹窗常驻挂载，挂载时此 effect 即会执行；
+    // 普通用户无标签编辑入口，故仅管理员拉取分组，避免普通用户进渠道页即 403。
+    if (isAdmin()) {
+      fetchGroups().then();
+    }
     fetchTagModels().then();
     setModelSearchValue('');
     if (formApiRef.current) {
