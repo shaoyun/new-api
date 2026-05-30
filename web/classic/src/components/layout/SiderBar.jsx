@@ -481,15 +481,19 @@ const SiderBar = ({ onNavigate = () => {} }) => {
             </>
           )}
 
-          {/* 管理员区域 - 只在管理员时显示且配置允许时显示 */}
-          {isAdmin() && hasSectionVisibleModules('admin') && (
+          {/* 管理员区域：管理员可见全部管理项与「管理员」分组标签；
+              普通用户仅可见「渠道管理」（只读查看），其余管理项与标签保持仅管理员可见。
+              filter 对管理员为 no-op，管理员渲染结果与此前完全一致。 */}
+          {hasSectionVisibleModules('admin') && (
             <>
               <Divider className='sidebar-divider' />
               <div>
-                {!collapsed && (
+                {!collapsed && isAdmin() && (
                   <div className='sidebar-group-label'>{t('管理员')}</div>
                 )}
-                {adminItems.map((item) => renderNavItem(item))}
+                {adminItems
+                  .filter((item) => isAdmin() || item.itemKey === 'channel')
+                  .map((item) => renderNavItem(item))}
               </div>
             </>
           )}
