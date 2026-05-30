@@ -62,7 +62,7 @@ type EditTagDialogProps = {
 
 export function EditTagDialog({ open, onOpenChange }: EditTagDialogProps) {
   const { t } = useTranslation()
-  const { currentTag } = useChannels()
+  const { currentTag, canManage } = useChannels()
   const queryClient = useQueryClient()
 
   // Form state
@@ -84,14 +84,14 @@ export function EditTagDialog({ open, onOpenChange }: EditTagDialogProps) {
   const { data: allModelsData } = useQuery({
     queryKey: ['all-models'],
     queryFn: getAllModels,
-    enabled: open,
+    enabled: open && canManage,
   })
 
   // Fetch groups
   const { data: groupsData } = useQuery({
     queryKey: ['groups'],
     queryFn: getGroups,
-    enabled: open,
+    enabled: open && canManage,
   })
 
   const availableModels =

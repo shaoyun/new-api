@@ -57,7 +57,7 @@ export function TagBatchEditDialog({
   onOpenChange,
 }: TagBatchEditDialogProps) {
   const { t } = useTranslation()
-  const { currentTag } = useChannels()
+  const { currentTag, canManage } = useChannels()
   const queryClient = useQueryClient()
   const [isLoading, setIsLoading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
@@ -72,6 +72,7 @@ export function TagBatchEditDialog({
   const { data: groupsData, isLoading: isLoadingGroups } = useQuery({
     queryKey: ['groups'],
     queryFn: getGroups,
+    enabled: open && canManage,
   })
 
   // Transform groups to multi-select options

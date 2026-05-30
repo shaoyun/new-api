@@ -76,7 +76,7 @@ function isDisabledChannelRow(channel: Channel) {
 
 export function ChannelsTable() {
   const { t } = useTranslation()
-  const { enableTagMode, idSort } = useChannels()
+  const { enableTagMode, idSort, canManage } = useChannels()
   const isMobile = useMediaQuery('(max-width: 640px)')
 
   // Table state
@@ -178,6 +178,7 @@ export function ChannelsTable() {
   const { data: groupsData } = useQuery({
     queryKey: ['groups'],
     queryFn: getGroups,
+    enabled: canManage,
   })
 
   const groupOptions = useMemo(
