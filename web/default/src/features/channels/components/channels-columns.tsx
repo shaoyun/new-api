@@ -118,8 +118,9 @@ function renderLimitedItems(
  * Upstream update tags (+N / -N) shown on channel name for model-fetchable channels
  */
 function UpstreamUpdateTags({ channel }: { channel: Channel }) {
-  const { upstream, setCurrentRow } = useChannels()
+  const { upstream, setCurrentRow, canManage } = useChannels()
   if (!MODEL_FETCHABLE_TYPES.has(channel.type)) return null
+  if (!canManage) return null
 
   const meta = parseUpstreamUpdateMeta(channel.settings)
   if (!meta.enabled) return null
@@ -178,6 +179,7 @@ function UpstreamUpdateTags({ channel }: { channel: Channel }) {
 function PriorityCell({ channel }: { channel: Channel }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
+  const { canManage } = useChannels()
   const isTagRow = isTagAggregateRow(channel)
   const priority = channel.priority
   const [confirmOpen, setConfirmOpen] = useState(false)
@@ -197,6 +199,7 @@ function PriorityCell({ channel }: { channel: Channel }) {
             setConfirmOpen(true)
           }}
           min={-999}
+          disabled={!canManage}
         />
         <ConfirmDialog
           open={confirmOpen}
@@ -223,6 +226,7 @@ function PriorityCell({ channel }: { channel: Channel }) {
         handleUpdateChannelField(channel.id, 'priority', value, queryClient)
       }}
       min={-999}
+      disabled={!canManage}
     />
   )
 }
@@ -233,6 +237,7 @@ function PriorityCell({ channel }: { channel: Channel }) {
 function WeightCell({ channel }: { channel: Channel }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
+  const { canManage } = useChannels()
   const isTagRow = isTagAggregateRow(channel)
   const weight = channel.weight
   const [confirmOpen, setConfirmOpen] = useState(false)
@@ -252,6 +257,7 @@ function WeightCell({ channel }: { channel: Channel }) {
             setConfirmOpen(true)
           }}
           min={0}
+          disabled={!canManage}
         />
         <ConfirmDialog
           open={confirmOpen}
@@ -278,6 +284,7 @@ function WeightCell({ channel }: { channel: Channel }) {
         handleUpdateChannelField(channel.id, 'weight', value, queryClient)
       }}
       min={0}
+      disabled={!canManage}
     />
   )
 }
@@ -288,6 +295,7 @@ function WeightCell({ channel }: { channel: Channel }) {
 function BalanceCell({ channel }: { channel: Channel }) {
   const { t } = useTranslation()
   const queryClient = useQueryClient()
+  const { canManage } = useChannels()
   const isTagRow = isTagAggregateRow(channel)
   const balance = channel.balance || 0
   const usedQuota = channel.used_quota || 0
@@ -322,6 +330,7 @@ function BalanceCell({ channel }: { channel: Channel }) {
   const variant = getBalanceVariant(balance)
 
   const handleClickUpdate = async () => {
+    if (!canManage) return
     if (isUpdating) return
 
     setIsUpdating(true)
@@ -388,7 +397,7 @@ function BalanceCell({ channel }: { channel: Channel }) {
                 size='sm'
                 copyable={false}
                 showDot={false}
-                className='cursor-pointer'
+                className={canManage ? 'cursor-pointer' : 'cursor-default'}
                 onClick={handleClickUpdate}
               />
             }
@@ -440,19 +449,22 @@ function BalanceCell({ channel }: { channel: Channel }) {
  */
 export function useChannelsColumns(): ColumnDef<Channel>[] {
   const { t } = useTranslation()
+  const { canManage } = useChannels()
   return [
     // Checkbox column
     {
       id: 'select',
-      header: ({ table }) => (
-        <Checkbox
-          checked={table.getIsAllPageRowsSelected()}
-          indeterminate={table.getIsSomePageRowsSelected()}
-          onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
-          aria-label='Select all'
-        />
-      ),
+      header: ({ table }) =>
+        canManage ? (
+          <Checkbox
+            checked={table.getIsAllPageRowsSelected()}
+            indeterminate={table.getIsSomePageRowsSelected()}
+            onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+            aria-label='Select all'
+          />
+        ) : null,
       cell: ({ row }) => {
+        if (!canManage) return null
         const isTagRow = isTagAggregateRow(row.original)
 
         // Don't show checkbox for tag rows
