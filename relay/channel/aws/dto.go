@@ -5,8 +5,6 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
-	"strings"
-
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
@@ -38,19 +36,26 @@ func formatRequest(requestBody io.Reader, requestHeader http.Header) (*AwsClaude
 	}
 	awsClaudeRequest.AnthropicVersion = "bedrock-2023-05-31"
 
-	// check header anthropic-beta
-	anthropicBetaValues := requestHeader.Get("anthropic-beta")
-	if len(anthropicBetaValues) > 0 {
-		var tempArray []string
-		tempArray = strings.Split(anthropicBetaValues, ",")
-		if len(tempArray) > 0 {
-			betaJson, err := json.Marshal(tempArray)
-			if err != nil {
-				return nil, err
-			}
-			awsClaudeRequest.AnthropicBeta = betaJson
-		}
-	}
+	// TODO: anthropic-beta header passthrough is temporarily disabled.
+	// AWS Bedrock only supports a subset of Anthropic beta flags. Forwarding all flags
+	// from clients like Claude Code (e.g. claude-code-20250219, interleaved-thinking-2025-05-14,
+	// redact-thinking-2026-02-12, prompt-caching-scope-2026-01-05) causes Bedrock to return
+	// a 400 "invalid beta flag" error. The correct fix is a whitelist filter — see
+	// custom-docs/aws-bedrock-anthropic-beta-header.md for the full analysis and plan.
+	//
+	// Original code (do not delete until whitelist is implemented):
+	// anthropicBetaValues := requestHeader.Get("anthropic-beta")
+	// if len(anthropicBetaValues) > 0 {
+	// 	var tempArray []string
+	// 	tempArray = strings.Split(anthropicBetaValues, ",")
+	// 	if len(tempArray) > 0 {
+	// 		betaJson, err := json.Marshal(tempArray)
+	// 		if err != nil {
+	// 			return nil, err
+	// 		}
+	// 		awsClaudeRequest.AnthropicBeta = betaJson
+	// 	}
+	// }
 	logger.LogJson(context.Background(), "json", awsClaudeRequest)
 	return &awsClaudeRequest, nil
 }
