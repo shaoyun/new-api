@@ -1,0 +1,181 @@
+name: Publish Docker image (dev)
+
+# 触发条件：
+#   1. 任何分支的 push（nightly 分支由 docker-image-nightly.yml 处理，这里排除）
+#   2. workflow_dispatch 手动触发，可指定自定义 tag
+#
+# 跳过构建的方式：
+#   A. 提交信息包含 [skip ci] / [ci skip] / [no ci] —— GitHub 原生跳过整个工作流
+#   B. 提交信息包含 [skip docker] / [skip build] / [no-build] —— 仅跳过 docker 构建 job
+#
+# 镜像 tag 优先级：
+#   1. workflow_dispatch 输入的 tag
+#   2. commit message 中匹配 [build:vX.Y.Z] 或 [version:vX.Y.Z]
+#   3. 兜底使用 <branch>-<short-sha>，并额外打 dev-latest
+#
+# 镜像仓库：ghcr.io/shaoyun/new-api（GitHub Container Registry，使用 GITHUB_TOKEN 认证）
+
+on:
+  push:
+    branches:
+      - '**'
+      - '!nightly'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '镜像 tag (例如 v1.0.0)，留空则使用分支名-短SHA'
+        required: false
+        type: string
+
+jobs:
+  check_skip:
+    name: Check skip flags
+    runs-on: ubuntu-latest
+    outputs:
+      should_skip: ${{ steps.flags.outputs.should_skip }}
+      reason: ${{ steps.flags.outputs.reason }}
+    steps:
+      - name: Inspect commit message
+        id: flags
+        env:
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          if [ "$EVENT_NAME" = "workflow_dispatch" ]; then
+            echo "should_skip=false" >> "$GITHUB_OUTPUT"
+            echo "reason=manual dispatch" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          msg="${COMMIT_MSG}"
+          echo "Commit message: $msg"
+
+          # 自定义关键字（[skip ci] 由 GitHub 在工作流加载阶段直接拦截，这里不再判断）
+          if echo "$msg" | grep -qiE '\[(skip docker|skip build|no-build)\]'; then
+            echo "should_skip=true" >> "$GITHUB_OUTPUT"
+            echo "reason=commit contains skip keyword" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skip docker build because commit message contains a skip keyword."
+            exit 0
+          fi
+
+          echo "should_skip=false" >> "$GITHUB_OUTPUT"
+          echo "reason=ok" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build & push (amd64)
+    needs: check_skip
+    if: needs.check_skip.outputs.should_skip != 'true'
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Resolve image tag & write VERSION
+        id: version
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+          COMMIT_MSG: ${{ github.event.head_commit.message }}
+        run: |
+          BRANCH="${GITHUB_REF_NAME}"
+          SHORT_SHA="$(git rev-parse --short HEAD)"
+          # 把分支名中的 / : 等字符转成 -，避免成为不合法 docker tag
+          SAFE_BRANCH="$(echo "$BRANCH" | tr '/:' '--' | tr -cd 'A-Za-z0-9._-')"
+
+          if [ -n "$INPUT_TAG" ]; then
+            TAG="$INPUT_TAG"
+            SOURCE="workflow_dispatch input"
+          else
+            # 尝试从 commit message 中提取 [build:vX.Y.Z] 或 [version:vX.Y.Z]
+            EXTRACTED="$(echo "$COMMIT_MSG" | grep -oiE '\[(build|version):[A-Za-z0-9._+-]+\]' | head -n1 | sed -E 's/^\[(build|version)://I; s/\]$//')"
+            if [ -n "$EXTRACTED" ]; then
+              TAG="$EXTRACTED"
+              SOURCE="commit message keyword"
+            else
+              TAG="${SAFE_BRANCH}-${SHORT_SHA}"
+              SOURCE="branch-sha fallback"
+            fi
+          fi
+
+          BRANCH_SHA="${SAFE_BRANCH}-${SHORT_SHA}"
+          # has_named_tag=true 表示 TAG 是有意义的版本号，不等于兜底的 branch-sha
+          if [ "$TAG" != "$BRANCH_SHA" ]; then
+            HAS_NAMED_TAG="true"
+          else
+            HAS_NAMED_TAG="false"
+          fi
+
+          # 构建推送的完整 tag 列表（有命名版本号时额外推一条）
+          if [ "$HAS_NAMED_TAG" = "true" ]; then
+            TAGS="ghcr.io/shaoyun/new-api:${TAG}
+ghcr.io/shaoyun/new-api:${BRANCH_SHA}
+ghcr.io/shaoyun/new-api:dev-latest"
+          else
+            TAGS="ghcr.io/shaoyun/new-api:${BRANCH_SHA}
+ghcr.io/shaoyun/new-api:dev-latest"
+          fi
+
+          echo "Resolved tag: $TAG (source: $SOURCE)"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "branch_sha=$BRANCH_SHA" >> "$GITHUB_OUTPUT"
+          {
+            echo "tags<<EOF"
+            echo "$TAGS"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "$TAG" > VERSION
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata (labels)
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/shaoyun/new-api
+
+      - name: Build & push (linux/amd64)
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.version.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: false
+          sbom: false
+
+      - name: Image summary
+        run: |
+          echo "### Docker Image (dev)" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ steps.version.outputs.tags }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "digest: ${{ steps.build.outputs.digest }}" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+
+  skipped:
+    name: Skipped (skip keyword detected)
+    needs: check_skip
+    if: needs.check_skip.outputs.should_skip == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notice
+        run: |
+          echo "### Docker build skipped" >> "$GITHUB_STEP_SUMMARY"
+          echo "Reason: ${{ needs.check_skip.outputs.reason }}" >> "$GITHUB_STEP_SUMMARY"
