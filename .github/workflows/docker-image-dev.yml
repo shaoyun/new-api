@@ -113,12 +113,12 @@ jobs:
 
           # 构建推送的完整 tag 列表（有命名版本号时额外推一条）
           if [ "$HAS_NAMED_TAG" = "true" ]; then
-            TAGS="ghcr.io/shaoyun/new-api:${TAG}
-ghcr.io/shaoyun/new-api:${BRANCH_SHA}
-ghcr.io/shaoyun/new-api:dev-latest"
+            TAGS="ghcr.io/shaoyun/new-api:${TAG}"
+            TAGS="${TAGS}"$'\n'"ghcr.io/shaoyun/new-api:${BRANCH_SHA}"
+            TAGS="${TAGS}"$'\n'"ghcr.io/shaoyun/new-api:dev-latest"
           else
-            TAGS="ghcr.io/shaoyun/new-api:${BRANCH_SHA}
-ghcr.io/shaoyun/new-api:dev-latest"
+            TAGS="ghcr.io/shaoyun/new-api:${BRANCH_SHA}"
+            TAGS="${TAGS}"$'\n'"ghcr.io/shaoyun/new-api:dev-latest"
           fi
 
           echo "Resolved tag: $TAG (source: $SOURCE)"
