@@ -122,6 +122,6 @@ if len(anthropicBetaValues) > 0 {
 **代码变更位置**：`relay/channel/aws/dto.go` `formatRequest` 函数，原 header 读取逻辑保留为注释，注明原因。
 
 **后续 TODO**：
-- [ ] 实现白名单过滤方案替换本次临时修复
+- [x] 实现白名单过滤方案替换本次临时修复（已完成，当前白名单：`context-management-2025-06-27`, `interleaved-thinking-2025-05-14`）
 - [ ] 跟进合并 PR #4955
 - [ ] 关注 AWS Bedrock 文档，及时更新白名单
