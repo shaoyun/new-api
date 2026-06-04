@@ -15,8 +15,11 @@ import (
 // Flags not in this list will be silently dropped to avoid 400 errors.
 // Ref: https://docs.aws.amazon.com/bedrock/latest/userguide/model-parameters-anthropic-claude-messages-request-response.html
 var bedrockSupportedBetaFlags = map[string]bool{
-	"context-management-2025-06-27":   true,
+	"claude-code-20250219":            true,
 	"interleaved-thinking-2025-05-14": true,
+	"context-management-2025-06-27":   true,
+	"effort-2025-11-24":               true,
+	"computer-use-2025-11-24":         true,
 }
 
 type AwsClaudeRequest struct {
