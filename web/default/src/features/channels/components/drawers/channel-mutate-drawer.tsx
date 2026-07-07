@@ -197,6 +197,10 @@ const MODEL_MAPPING_PREVIEW_FALLBACK: Array<{
 const ADVANCED_SETTINGS_EXPANDED_KEY = 'channel-advanced-settings-expanded'
 const UPSTREAM_DETECTED_MODEL_PREVIEW_LIMIT = 8
 
+// 对普通用户(只读模式)隐藏 API 地址的渠道类型：Anthropic(14) / AWS(33)。
+// 与后端 sanitizeChannelForRole 的 baseURLHiddenChannelTypes 保持一致。
+const BASE_URL_HIDDEN_CHANNEL_TYPES = [14, 33]
+
 function readAdvancedSettingsPreference(): boolean {
   if (typeof window === 'undefined') return false
   return window.localStorage.getItem(ADVANCED_SETTINGS_EXPANDED_KEY) === 'true'
@@ -1771,7 +1775,11 @@ export function ChannelMutateDrawer({
                     )}
 
                     {/* General base_url for other types */}
-                    {![3, 8, 22, 36, 45].includes(currentType) && (
+                    {![3, 8, 22, 36, 45].includes(currentType) &&
+                      !(
+                        readOnly &&
+                        BASE_URL_HIDDEN_CHANNEL_TYPES.includes(currentType)
+                      ) && (
                       <FormField
                         control={form.control}
                         name='base_url'
