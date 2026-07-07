@@ -16,13 +16,15 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useMemo } from 'react'
 import { useLocation } from '@tanstack/react-router'
+import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { useAuthStore } from '@/stores/auth-store'
-import { ROLE } from '@/lib/roles'
+
 import { resolveSidebarView } from '@/components/layout/lib/sidebar-view-registry'
 import type { NavGroup, ResolvedSidebarView } from '@/components/layout/types'
+import { ROLE } from '@/lib/roles'
+import { useAuthStore } from '@/stores/auth-store'
+
 import { useSidebarConfig } from './use-sidebar-config'
 import { useSidebarData } from './use-sidebar-data'
 
@@ -53,17 +55,24 @@ export function useSidebarView(): ResolvedSidebarView {
     const role = userRole ?? ROLE.GUEST
     return configFilteredRoot
       .map((group) => {
-        if (group.id !== 'admin') return group
-        // admin 组逐项过滤：项自带 minRole 用其值，否则默认要求 ADMIN
+        // 非 admin 组：仅按 item.requiredRole 过滤（未设置则默认可见）。
+        if (group.id !== 'admin') {
+          const items = group.items.filter(
+            (item) => item.requiredRole === undefined || role >= item.requiredRole
+          )
+          return items.length === group.items.length ? group : { ...group, items }
+        }
+        // admin 组：默认要求 ADMIN，但带显式 requiredRole 的项按其阈值放行
+        // （定制：让普通用户可见「渠道」只读入口，item.requiredRole = ROLE.USER）。
         const items = group.items.filter((item) => {
           const required =
-            typeof item.minRole === 'number' ? item.minRole : ROLE.ADMIN
+            typeof item.requiredRole === 'number' ? item.requiredRole : ROLE.ADMIN
           return role >= required
         })
         return { ...group, items }
       })
       .filter((group) => group.items.length > 0)
-  }, [configFilteredRoot, userRole])
+  }, [userRole, configFilteredRoot])
 
   const view = resolveSidebarView(pathname)
 

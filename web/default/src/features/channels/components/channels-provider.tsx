@@ -17,13 +17,20 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 /* eslint-disable react-refresh/only-export-components */
-import React, { createContext, useContext, useState, useCallback } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  useMemo,
+} from 'react'
+
 import { useChannelUpstreamUpdates } from '../hooks/use-channel-upstream-updates'
 import { channelsQueryKeys } from '../lib'
 import type { Channel } from '../types'
 import { useAuthStore } from '@/stores/auth-store'
-import { ROLE } from '@/lib/roles'
+import { hasPermission } from '@/lib/admin-permissions'
 
 // ============================================================================
 // Types
@@ -55,7 +62,11 @@ type ChannelsContextType = {
   setEnableTagMode: (enabled: boolean) => void
   idSort: boolean
   setIdSort: (enabled: boolean) => void
-  /** 当前用户是否可执行渠道写操作(role >= ADMIN)。普通用户为 false → 只读。 */
+  batchMode: boolean
+  setBatchMode: (enabled: boolean) => void
+  sensitiveVisible: boolean
+  setSensitiveVisible: (visible: boolean) => void
+  /** 当前用户是否可执行渠道写操作。基于 casbin channel:write 能力,普通用户为 false → 只读。 */
   canManage: boolean
   upstream: UpstreamUpdateState
 }
@@ -82,6 +93,8 @@ export function ChannelsProvider({ children }: { children: React.ReactNode }) {
   const [idSort, setIdSort] = useState(() => {
     return localStorage.getItem('channels-id-sort') === 'true'
   })
+  const [batchMode, setBatchMode] = useState(false)
+  const [sensitiveVisible, setSensitiveVisible] = useState(true)
 
   const queryClient = useQueryClient()
   const refreshChannels = useCallback(async () => {
@@ -89,26 +102,47 @@ export function ChannelsProvider({ children }: { children: React.ReactNode }) {
   }, [queryClient])
   const upstream = useChannelUpstreamUpdates(refreshChannels)
 
-  const userRole = useAuthStore((s) => s.auth.user?.role)
-  const canManage = (userRole ?? ROLE.GUEST) >= ROLE.ADMIN
+  // 定制:基于 casbin channel:write 能力矩阵派生写权限,取代原先的 role >= ADMIN 判断。
+  const user = useAuthStore((s) => s.auth.user)
+  const canManage = hasPermission(user, 'channel', 'write')
+
+  // useState setters are stable, so the context value only needs to change when
+  // an actual state value changes. Memoizing avoids handing every consumer
+  // (including all channel cards/cells) a brand-new object on each render.
+  const value = useMemo<ChannelsContextType>(
+    () => ({
+      open,
+      setOpen,
+      currentRow,
+      setCurrentRow,
+      currentTag,
+      setCurrentTag,
+      enableTagMode,
+      setEnableTagMode,
+      idSort,
+      setIdSort,
+      batchMode,
+      setBatchMode,
+      sensitiveVisible,
+      setSensitiveVisible,
+      canManage,
+      upstream,
+    }),
+    [
+      open,
+      currentRow,
+      currentTag,
+      enableTagMode,
+      idSort,
+      batchMode,
+      sensitiveVisible,
+      canManage,
+      upstream,
+    ]
+  )
 
   return (
-    <ChannelsContext.Provider
-      value={{
-        open,
-        setOpen,
-        currentRow,
-        setCurrentRow,
-        currentTag,
-        setCurrentTag,
-        enableTagMode,
-        setEnableTagMode,
-        idSort,
-        setIdSort,
-        canManage,
-        upstream,
-      }}
-    >
+    <ChannelsContext.Provider value={value}>
       {children}
     </ChannelsContext.Provider>
   )

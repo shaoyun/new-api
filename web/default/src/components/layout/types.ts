@@ -28,8 +28,15 @@ type BaseNavItem = {
   icon?: React.ElementType
   activeUrls?: (LinkProps['to'] | (string & {}))[]
   configUrls?: (LinkProps['to'] | (string & {}))[]
-  /** 最低可见角色(数值，对应 ROLE.*)。未设置时该项归属其所在分组的默认角色门控。 */
-  minRole?: number
+  /**
+   * Minimum role required to see this item in the sidebar. When set, the item
+   * is hidden for users whose role is below this threshold (see
+   * `useSidebarView`). Route-level guards still enforce access independently.
+   *
+   * 定制：对 admin 分组内的项，设置一个较低的 requiredRole（如 ROLE.USER）可
+   * 让普通用户看到该项（例如「渠道」只读入口），而不放开整个 admin 分组。
+   */
+  requiredRole?: number
 }
 
 /**
