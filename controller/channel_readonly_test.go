@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/model"
 	"github.com/gin-gonic/gin"
 	"github.com/glebarez/sqlite"
@@ -69,6 +70,58 @@ func TestSanitizeChannelForRole_NilChannelNoPanic(t *testing.T) {
 	c, _ := gin.CreateTestContext(nil)
 	c.Set("role", common.RoleCommonUser)
 	require.NotPanics(t, func() { sanitizeChannelForRole(c, nil) })
+}
+
+func newChannelWithBaseURL(channelType int) *model.Channel {
+	baseURL := "https://tokcor.com"
+	settingJSON := `{"proxy":"http://user:pass@127.0.0.1:8080"}`
+	return &model.Channel{
+		Id:      1,
+		Name:    "url-channel",
+		Type:    channelType,
+		Key:     "sk-super-secret",
+		BaseURL: &baseURL,
+		Setting: &settingJSON,
+	}
+}
+
+func TestSanitizeChannelForRole_CommonUserHidesBaseURLForClaudeTypes(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, channelType := range []int{constant.ChannelTypeAnthropic, constant.ChannelTypeAws} {
+		c, _ := gin.CreateTestContext(nil)
+		c.Set("role", common.RoleCommonUser)
+
+		ch := newChannelWithBaseURL(channelType)
+		sanitizeChannelForRole(c, ch)
+
+		require.NotNil(t, ch.BaseURL)
+		require.Equal(t, "", *ch.BaseURL, "common user must not see base_url for channel type %d", channelType)
+	}
+}
+
+func TestSanitizeChannelForRole_CommonUserKeepsBaseURLForOtherTypes(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(nil)
+	c.Set("role", common.RoleCommonUser)
+
+	// OpenAI(type 1) 不在隐藏集合中，base_url 应保留
+	ch := newChannelWithBaseURL(1)
+	sanitizeChannelForRole(c, ch)
+
+	require.NotNil(t, ch.BaseURL)
+	require.Equal(t, "https://tokcor.com", *ch.BaseURL, "base_url must be preserved for non-hidden channel types")
+}
+
+func TestSanitizeChannelForRole_AdminKeepsBaseURLForClaudeTypes(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(nil)
+	c.Set("role", common.RoleAdminUser)
+
+	ch := newChannelWithBaseURL(constant.ChannelTypeAnthropic)
+	sanitizeChannelForRole(c, ch)
+
+	require.NotNil(t, ch.BaseURL)
+	require.Equal(t, "https://tokcor.com", *ch.BaseURL, "admin must keep base_url")
 }
 
 func setupChannelReadonlyDB(t *testing.T) {
