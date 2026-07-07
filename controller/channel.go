@@ -71,9 +71,20 @@ func clearChannelInfo(channel *model.Channel) {
 	}
 }
 
+// baseURLHiddenChannelTypes 是对普通用户隐藏 base_url(API 地址)的渠道类型集合。
+// Anthropic / AWS Claude 走的多是官方或私有接入地址，不希望普通用户看到上游真实地址。
+// 如需对更多类型隐藏 base_url，在此追加即可。
+var baseURLHiddenChannelTypes = map[int]bool{
+	constant.ChannelTypeAnthropic: true, // 14
+	constant.ChannelTypeAws:       true, // 33
+}
+
 // sanitizeChannelForRole 按调用者角色对渠道响应做脱敏。
 // admin/root(role >= RoleAdminUser)不做任何处理，保持完整数据。
-// 普通用户(role < RoleAdminUser)清空敏感字段：key 与 setting.proxy。
+// 普通用户(role < RoleAdminUser)清空敏感字段：
+//   - key 与 setting.proxy（所有渠道）
+//   - base_url（仅 baseURLHiddenChannelTypes 中的渠道类型，如 Anthropic / AWS Claude）
+//
 // 注意：header_override / param_override 按产品决定不脱敏，保持原样。
 func sanitizeChannelForRole(c *gin.Context, channel *model.Channel) {
 	if channel == nil {
@@ -89,6 +100,11 @@ func sanitizeChannelForRole(c *gin.Context, channel *model.Channel) {
 	if setting.Proxy != "" {
 		setting.Proxy = ""
 		channel.SetSetting(setting)
+	}
+	// 对指定类型的渠道隐藏 API 地址(上游真实接入地址)
+	if baseURLHiddenChannelTypes[channel.Type] {
+		empty := ""
+		channel.BaseURL = &empty
 	}
 }
 

@@ -258,6 +258,9 @@ const ADVANCED_SETTINGS_CHILD_SECTION_IDS: string[] = Object.values(
 )
 const ADVANCED_CUSTOM_ROUTE_TYPE_PREVIEW_LIMIT = 3
 const UPSTREAM_DETECTED_MODEL_PREVIEW_LIMIT = 8
+// 对普通用户(只读模式)隐藏 API 地址的渠道类型：Anthropic(14) / AWS(33)。
+// 与后端 sanitizeChannelForRole 的 baseURLHiddenChannelTypes 保持一致。
+const BASE_URL_HIDDEN_CHANNEL_TYPES = [14, 33]
 const SENSITIVE_FORM_FIELDS = [
   'type',
   'base_url',
@@ -2625,7 +2628,14 @@ export function ChannelMutateDrawer({
                             )}
 
                             {/* General base_url for other types */}
-                            {![3, 8, 22, 36, 45].includes(currentType) && (
+                            {/* 定制:普通用户只读查看 Anthropic/AWS 渠道时隐藏 base_url */}
+                            {![3, 8, 22, 36, 45].includes(currentType) &&
+                              !(
+                                readOnly &&
+                                BASE_URL_HIDDEN_CHANNEL_TYPES.includes(
+                                  currentType
+                                )
+                              ) && (
                               <FormField
                                 control={form.control}
                                 name='base_url'
