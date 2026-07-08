@@ -4013,6 +4013,7 @@
     "Send reset email": "Отправить письмо для сброса пароля",
     "Sending...": "Отправка...",
     "Sensitive channel settings are read-only for your account.": "Чувствительные настройки каналов доступны вашей учетной записи только для чтения.",
+    "This channel is read-only for your account. You can view its configuration but cannot make any changes.": "This channel is read-only for your account. You can view its configuration but cannot make any changes.",
     "Sensitive Words": "Чувствительные слова",
     "Sent the API key to FluentRead.": "API-ключ отправлен в FluentRead.",
     "Separate image/audio prices are enabled.": "Отдельные цены для изображений и аудио включены.",

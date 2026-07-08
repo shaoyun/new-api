@@ -4013,6 +4013,7 @@
     "Send reset email": "发送重置邮件",
     "Sending...": "发送中...",
     "Sensitive channel settings are read-only for your account.": "你的账号只能查看敏感渠道设置。",
+    "This channel is read-only for your account. You can view its configuration but cannot make any changes.": "此渠道对你的账号为只读。你可以查看它的配置，但无法做任何修改。",
     "Sensitive Words": "敏感词",
     "Sent the API key to FluentRead.": "API 密钥已发送至 FluentRead。",
     "Separate image/audio prices are enabled.": "已启用图像/音频单独定价。",

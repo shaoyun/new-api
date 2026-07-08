@@ -258,9 +258,6 @@ const ADVANCED_SETTINGS_CHILD_SECTION_IDS: string[] = Object.values(
 )
 const ADVANCED_CUSTOM_ROUTE_TYPE_PREVIEW_LIMIT = 3
 const UPSTREAM_DETECTED_MODEL_PREVIEW_LIMIT = 8
-// 对普通用户(只读模式)隐藏 API 地址的渠道类型：Anthropic(14) / AWS(33)。
-// 与后端 sanitizeChannelForRole 的 baseURLHiddenChannelTypes 保持一致。
-const BASE_URL_HIDDEN_CHANNEL_TYPES = [14, 33]
 const SENSITIVE_FORM_FIELDS = [
   'type',
   'base_url',
@@ -1784,17 +1781,29 @@ export function ChannelMutateDrawer({
             </SheetDescription>
           </SheetHeader>
 
-          {sensitiveLocked && (
-            <Alert className='border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-50'>
+          {/* 定制:纯只读用户(无渠道写权限)给出明确的"只读查看"提示,
+              避免沿用"仍可编辑非敏感字段"的误导性文案。 */}
+          {readOnly ? (
+            <Alert className='border-border bg-muted/40 text-muted-foreground'>
               <AlertDescription>
                 {t(
-                  'Sensitive channel settings are read-only for your account.'
-                )}{' '}
-                {t(
-                  'You can still edit non-sensitive operations fields such as models, groups, priority, and weight.'
+                  'This channel is read-only for your account. You can view its configuration but cannot make any changes.'
                 )}
               </AlertDescription>
             </Alert>
+          ) : (
+            sensitiveLocked && (
+              <Alert className='border-amber-200 bg-amber-50 text-amber-900 dark:border-amber-500/40 dark:bg-amber-500/10 dark:text-amber-50'>
+                <AlertDescription>
+                  {t(
+                    'Sensitive channel settings are read-only for your account.'
+                  )}{' '}
+                  {t(
+                    'You can still edit non-sensitive operations fields such as models, groups, priority, and weight.'
+                  )}
+                </AlertDescription>
+              </Alert>
+            )
           )}
 
           <Form {...form}>
@@ -2628,14 +2637,10 @@ export function ChannelMutateDrawer({
                             )}
 
                             {/* General base_url for other types */}
-                            {/* 定制:普通用户只读查看 Anthropic/AWS 渠道时隐藏 base_url */}
-                            {![3, 8, 22, 36, 45].includes(currentType) &&
-                              !(
-                                readOnly &&
-                                BASE_URL_HIDDEN_CHANNEL_TYPES.includes(
-                                  currentType
-                                )
-                              ) && (
+                            {/* 定制:普通用户只读时,base_url 字段照常展示,但值已由后端
+                                sanitizeChannelForRole 对 Anthropic/AWS 等类型清空,
+                                因此普通用户看到的是空的只读输入框,而非隐藏整个字段。 */}
+                            {![3, 8, 22, 36, 45].includes(currentType) && (
                               <FormField
                                 control={form.control}
                                 name='base_url'
