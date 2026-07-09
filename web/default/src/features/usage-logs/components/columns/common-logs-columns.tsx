@@ -17,7 +17,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { type ColumnDef } from '@tanstack/react-table'
-import { CircleAlert, GitBranch, Sparkles, KeyRound } from 'lucide-react'
+import { CircleAlert, GitBranch, Sparkles, KeyRound, Bug } from 'lucide-react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -63,6 +63,7 @@ import {
 } from '../../lib/utils'
 import type { LogOtherData } from '../../types'
 import { DetailsDialog } from '../dialogs/details-dialog'
+import { RequestDebugDialog } from '../dialogs/request-debug-dialog'
 import { ModelBadge } from '../model-badge'
 import { useUsageLogsContext } from '../usage-logs-provider'
 
@@ -831,15 +832,17 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
       header: t('Details'),
       cell: function DetailsCell({ row }) {
         const [dialogOpen, setDialogOpen] = useState(false)
+        const [debugOpen, setDebugOpen] = useState(false)
         const log = row.original
         const other = parseLogOther(log.other)
 
         const segments = buildDetailSegments(log, other, t, isAdmin)
         const primary = segments[0]
         const hasMore = segments.length > 1
+        const showDebugButton = isAdmin && !!log.request_id
 
         return (
-          <>
+          <div className='flex items-center gap-1.5'>
             <button
               type='button'
               className='group flex max-w-[200px] items-center gap-1 text-left text-xs'
@@ -872,13 +875,34 @@ export function useCommonLogsColumns(isAdmin: boolean): ColumnDef<UsageLog>[] {
                 <span className='text-muted-foreground/40'>—</span>
               )}
             </button>
+            {showDebugButton && (
+              <button
+                type='button'
+                className='text-muted-foreground/60 hover:text-foreground focus-visible:ring-ring inline-flex size-6 shrink-0 items-center justify-center rounded-md transition-colors focus-visible:ring-2 focus-visible:outline-none'
+                onClick={(e) => {
+                  e.stopPropagation()
+                  setDebugOpen(true)
+                }}
+                title={t('Debug request')}
+                aria-label={t('Debug request')}
+              >
+                <Bug className='size-3.5' aria-hidden='true' />
+              </button>
+            )}
             <DetailsDialog
               log={log}
               isAdmin={isAdmin}
               open={dialogOpen}
               onOpenChange={setDialogOpen}
             />
-          </>
+            {showDebugButton && (
+              <RequestDebugDialog
+                requestId={log.request_id}
+                open={debugOpen}
+                onOpenChange={setDebugOpen}
+              />
+            )}
+          </div>
         )
       },
       size: 180,

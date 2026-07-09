@@ -80,12 +80,14 @@ import type { LogCleanupTask } from '../types'
 
 const logSettingsSchema = z.object({
   LogConsumeEnabled: z.boolean(),
+  'debug_setting.request_debug_enabled': z.boolean(),
 })
 
 type LogSettingsFormValues = z.infer<typeof logSettingsSchema>
 
 type LogSettingsSectionProps = {
   defaultEnabled: boolean
+  defaultRequestDebugEnabled: boolean
 }
 
 type ServerLogInfo = {
@@ -141,6 +143,7 @@ function isActiveLogCleanupTask(task: LogCleanupTask | null) {
 
 export function LogSettingsSection({
   defaultEnabled,
+  defaultRequestDebugEnabled,
 }: LogSettingsSectionProps) {
   const { t } = useTranslation()
   const updateOption = useUpdateOption()
@@ -148,6 +151,7 @@ export function LogSettingsSection({
     resolver: zodResolver(logSettingsSchema),
     defaultValues: {
       LogConsumeEnabled: defaultEnabled,
+      'debug_setting.request_debug_enabled': defaultRequestDebugEnabled,
     },
   })
 
@@ -174,8 +178,11 @@ export function LogSettingsSection({
   }, [])
 
   useEffect(() => {
-    form.reset({ LogConsumeEnabled: defaultEnabled })
-  }, [defaultEnabled, form])
+    form.reset({
+      LogConsumeEnabled: defaultEnabled,
+      'debug_setting.request_debug_enabled': defaultRequestDebugEnabled,
+    })
+  }, [defaultEnabled, defaultRequestDebugEnabled, form])
 
   useEffect(() => {
     fetchServerLogInfo()
@@ -257,11 +264,21 @@ export function LogSettingsSection({
   }, [logCleanupActive, logCleanupTaskId, t])
 
   const onSubmit = async (values: LogSettingsFormValues) => {
-    if (values.LogConsumeEnabled === defaultEnabled) return
-    await updateOption.mutateAsync({
-      key: 'LogConsumeEnabled',
-      value: values.LogConsumeEnabled,
-    })
+    if (values.LogConsumeEnabled !== defaultEnabled) {
+      await updateOption.mutateAsync({
+        key: 'LogConsumeEnabled',
+        value: values.LogConsumeEnabled,
+      })
+    }
+    if (
+      values['debug_setting.request_debug_enabled'] !==
+      defaultRequestDebugEnabled
+    ) {
+      await updateOption.mutateAsync({
+        key: 'debug_setting.request_debug_enabled',
+        value: values['debug_setting.request_debug_enabled'],
+      })
+    }
   }
 
   const handleRequestCleanLogs = () => {
@@ -353,6 +370,30 @@ export function LogSettingsSection({
                   <FormDescription>
                     {t(
                       'Track per-request consumption to power usage analytics. Keeping this on increases database writes.'
+                    )}
+                  </FormDescription>
+                </SettingsSwitchContent>
+                <FormControl>
+                  <Switch
+                    checked={field.value}
+                    onCheckedChange={field.onChange}
+                  />
+                </FormControl>
+                <FormMessage />
+              </SettingsSwitchItem>
+            )}
+          />
+
+          <FormField
+            control={form.control}
+            name='debug_setting.request_debug_enabled'
+            render={({ field }) => (
+              <SettingsSwitchItem>
+                <SettingsSwitchContent>
+                  <FormLabel>{t('Enable Request Debugging')}</FormLabel>
+                  <FormDescription>
+                    {t(
+                      'Capture each request’s headers (redacted) and body into a short-lived cache so admins can inspect them from the usage log. May expose sensitive prompt content; keep off unless troubleshooting.'
                     )}
                   </FormDescription>
                 </SettingsSwitchContent>

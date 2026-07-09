@@ -1,5 +1,16 @@
 {
   "translation": {
+    "Enable Request Debugging": "Enable Request Debugging",
+    "Capture each request’s headers (redacted) and body into a short-lived cache so admins can inspect them from the usage log. May expose sensitive prompt content; keep off unless troubleshooting.": "Capture each request’s headers (redacted) and body into a short-lived cache so admins can inspect them from the usage log. May expose sensitive prompt content; keep off unless troubleshooting.",
+    "Request Debug": "Request Debug",
+    "Inspect the captured request headers and body": "Inspect the captured request headers and body",
+    "Request debug data was not captured or has expired. Enable Request Debugging in system settings to capture new requests.": "Request debug data was not captured or has expired. Enable Request Debugging in system settings to capture new requests.",
+    "Method": "Method",
+    "Request Headers": "Request Headers",
+    "Request Body": "Request Body",
+    "truncated": "truncated",
+    "No request body": "No request body",
+    "Debug request": "Debug request",
     "360": "360",
     "1000": "1000",
     "10000": "10000",

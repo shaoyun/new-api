@@ -123,6 +123,10 @@ func Relay(c *gin.Context, relayFormat types.RelayFormat) {
 		return
 	}
 
+	// Admin-only request debugging: snapshot headers/body into a short-lived
+	// cache when enabled. No-op when the toggle is off; never blocks the relay.
+	service.CaptureRequestDebug(c, relayInfo)
+
 	needSensitiveCheck := setting.ShouldCheckPromptSensitive()
 	needCountToken := constant.CountToken
 	// Avoid building huge CombineText (strings.Join) when token counting and sensitive check are both disabled.

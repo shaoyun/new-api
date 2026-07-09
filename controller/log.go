@@ -6,9 +6,27 @@ import (
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
+	"github.com/QuantumNous/new-api/service"
 
 	"github.com/gin-gonic/gin"
 )
+
+// GetRequestDebugInfo returns the admin-only captured debug snapshot (redacted
+// headers + request body) for a request id. Returns success with data=null when
+// nothing was captured or the entry expired.
+func GetRequestDebugInfo(c *gin.Context) {
+	requestId := c.Param("request_id")
+	if requestId == "" {
+		common.ApiErrorMsg(c, "request_id is required")
+		return
+	}
+	payload, found := service.GetRequestDebug(requestId)
+	if !found {
+		common.ApiSuccess(c, nil)
+		return
+	}
+	common.ApiSuccess(c, payload)
+}
 
 func GetAllLogs(c *gin.Context) {
 	pageInfo := common.GetPageQuery(c)

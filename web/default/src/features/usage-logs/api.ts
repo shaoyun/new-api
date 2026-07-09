@@ -110,3 +110,29 @@ export const getAllTaskLogs = (params: GetTaskLogsParams) =>
 
 export const getUserTaskLogs = (params: GetTaskLogsParams) =>
   fetchLogs('/api/task', params, false)
+
+// ============================================================================
+// Request Debug API (admin only)
+// ============================================================================
+
+export interface RequestDebugPayload {
+  request_id: string
+  method: string
+  path: string
+  model: string
+  headers: Record<string, string> | null
+  body: string
+  body_truncated: boolean
+  captured_at: number
+}
+
+export async function getRequestDebugInfo(requestId: string): Promise<{
+  success: boolean
+  message?: string
+  data?: RequestDebugPayload | null
+}> {
+  const res = await api.get(
+    `/api/log/debug/${encodeURIComponent(requestId)}`
+  )
+  return res.data
+}

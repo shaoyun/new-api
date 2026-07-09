@@ -1,5 +1,16 @@
 {
   "translation": {
+    "Enable Request Debugging": "启用请求调试",
+    "Capture each request’s headers (redacted) and body into a short-lived cache so admins can inspect them from the usage log. May expose sensitive prompt content; keep off unless troubleshooting.": "将每次请求的请求头（脱敏）和请求体采集到短期缓存中，供管理员在使用日志中查看。可能暴露敏感的提示词内容，非排障时请保持关闭。",
+    "Request Debug": "请求调试",
+    "Inspect the captured request headers and body": "查看已采集的请求头和请求体",
+    "Request debug data was not captured or has expired. Enable Request Debugging in system settings to capture new requests.": "未采集到该请求的调试数据或已过期。请在系统设置中启用请求调试以采集新的请求。",
+    "Method": "方法",
+    "Request Headers": "请求头",
+    "Request Body": "请求体",
+    "truncated": "已截断",
+    "No request body": "无请求体",
+    "Debug request": "调试请求",
     "360": "360",
     "1000": "1000",
     "10000": "10000",
