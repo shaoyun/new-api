@@ -78,9 +78,16 @@ import { SettingsSection } from '../components/settings-section'
 import { useUpdateOption } from '../hooks/use-update-option'
 import type { LogCleanupTask } from '../types'
 
+// react-hook-form treats a `.` in a field name as a nested path, so the
+// dotted option key `debug_setting.request_debug_enabled` must be modeled as a
+// nested object here and flattened back to the dotted key on submit. Modeling
+// it as a flat key would make the form value diverge from the field path and
+// silently fail validation (save button appears to do nothing).
 const logSettingsSchema = z.object({
   LogConsumeEnabled: z.boolean(),
-  'debug_setting.request_debug_enabled': z.boolean(),
+  debug_setting: z.object({
+    request_debug_enabled: z.boolean(),
+  }),
 })
 
 type LogSettingsFormValues = z.infer<typeof logSettingsSchema>
@@ -151,7 +158,9 @@ export function LogSettingsSection({
     resolver: zodResolver(logSettingsSchema),
     defaultValues: {
       LogConsumeEnabled: defaultEnabled,
-      'debug_setting.request_debug_enabled': defaultRequestDebugEnabled,
+      debug_setting: {
+        request_debug_enabled: defaultRequestDebugEnabled,
+      },
     },
   })
 
@@ -180,7 +189,9 @@ export function LogSettingsSection({
   useEffect(() => {
     form.reset({
       LogConsumeEnabled: defaultEnabled,
-      'debug_setting.request_debug_enabled': defaultRequestDebugEnabled,
+      debug_setting: {
+        request_debug_enabled: defaultRequestDebugEnabled,
+      },
     })
   }, [defaultEnabled, defaultRequestDebugEnabled, form])
 
@@ -271,12 +282,11 @@ export function LogSettingsSection({
       })
     }
     if (
-      values['debug_setting.request_debug_enabled'] !==
-      defaultRequestDebugEnabled
+      values.debug_setting.request_debug_enabled !== defaultRequestDebugEnabled
     ) {
       await updateOption.mutateAsync({
         key: 'debug_setting.request_debug_enabled',
-        value: values['debug_setting.request_debug_enabled'],
+        value: values.debug_setting.request_debug_enabled,
       })
     }
   }
