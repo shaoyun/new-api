@@ -18,7 +18,7 @@ type DebugSetting struct {
 
 var debugSetting = DebugSetting{
 	RequestDebugEnabled: false,
-	TTLMinutes:          30,
+	TTLMinutes:          15,
 	MaxBodyKB:           256,
 }
 
@@ -31,10 +31,10 @@ func GetDebugSetting() *DebugSetting {
 }
 
 // RequestDebugTTLMinutes returns the configured retention minutes, falling back
-// to 30 when misconfigured to a non-positive value.
+// to 15 when misconfigured to a non-positive value.
 func (s *DebugSetting) RequestDebugTTLMinutes() int {
 	if s.TTLMinutes <= 0 {
-		return 30
+		return 15
 	}
 	return s.TTLMinutes
 }
