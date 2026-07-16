@@ -227,6 +227,12 @@ export interface LogStatistics {
   quota: number
   rpm: number
   tpm: number
+  // 缓存命中率 = cache_tokens / prompt_tokens(仅消费日志,跟随筛选区间)
+  prompt_tokens: number
+  cache_tokens: number
+  // 请求成功率 = success_count / (success_count + error_count)(忽略类型筛选,跟随筛选区间)
+  success_count: number
+  error_count: number
 }
 
 // ============================================================================

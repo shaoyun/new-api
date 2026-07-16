@@ -1,5 +1,8 @@
 {
   "translation": {
+    "360": "360",
+    "1000": "1000",
+    "10000": "10000",
     "Enable Request Debugging": "启用请求调试",
     "Capture each request’s headers (redacted) and body into a short-lived cache so admins can inspect them from the usage log. May expose sensitive prompt content; keep off unless troubleshooting.": "将每次请求的请求头（脱敏）和请求体采集到短期缓存中，供管理员在使用日志中查看。可能暴露敏感的提示词内容，非排障时请保持关闭。",
     "Request Debug": "请求调试",
@@ -11,9 +14,6 @@
     "truncated": "已截断",
     "No request body": "无请求体",
     "Debug request": "调试请求",
-    "360": "360",
-    "1000": "1000",
-    "10000": "10000",
     "_copy": "_复制",
     "，": "，",
     ", and": "，和",
@@ -691,6 +691,7 @@
     "Cache Directory Disk Space": "缓存目录磁盘空间",
     "Cache Directory Info": "缓存目录信息",
     "Cache Entries": "缓存条目",
+    "Cache Hit Rate": "缓存命中率",
     "Cache mode": "缓存模式",
     "Cache pricing": "缓存定价",
     "Cache ratio": "缓存倍率",

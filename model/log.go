@@ -613,59 +613,115 @@ type Stat struct {
 	Quota int `json:"quota"`
 	Rpm   int `json:"rpm"`
 	Tpm   int `json:"tpm"`
+	// PromptTokens 与 CacheTokens 用于缓存命中率(命中率 = CacheTokens / PromptTokens),
+	// 统计口径与 Quota 一致:按筛选时间区间 + 其它筛选、仅消费日志(type=2)。
+	PromptTokens int `json:"prompt_tokens"`
+	CacheTokens  int `json:"cache_tokens"`
+	// SuccessCount / ErrorCount 用于请求成功率(成功率 = SuccessCount / (SuccessCount + ErrorCount)),
+	// 统计口径:按筛选时间区间 + 其它筛选,但忽略类型筛选(强制 type IN (2,5))。
+	SuccessCount int `json:"success_count"`
+	ErrorCount   int `json:"error_count"`
 }
 
-func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string) (stat Stat, err error) {
-	tx := LOG_DB.Table("logs").Select("COALESCE(sum(quota), 0) quota")
-
-	// 为rpm和tpm创建单独的查询
-	rpmTpmQuery := LOG_DB.Table("logs").Select("count(*) rpm, COALESCE(sum(prompt_tokens), 0) + COALESCE(sum(completion_tokens), 0) tpm")
-
-	if tx, err = applyExplicitLogTextFilter(tx, "username", username); err != nil {
-		return stat, err
+// logStatCacheTokensExpr 返回按日志库方言从 other JSON 文本中提取并累加 cache_tokens 的 SQL 片段。
+// other 为 TEXT 列,cache_tokens 由后端以整数写入(GenerateTextOtherInfo)。所有分支都必须对
+// “非法/空/无该字段” 的历史脏行安全降级为 0,绝不能让单行脏数据使整条聚合报错。
+//   - MySQL/SQLite:用 JSON_VALID/json_valid 守卫,非法 JSON 记 0。
+//   - ClickHouse:JSONExtractInt 对非法/缺失输入本身返回 0。
+//   - PostgreSQL:PG < 16 无跨版本可用的 JSON 合法性判定,且 other::jsonb 对任何非法非空文本
+//     会直接抛错中断整条查询。故不做 JSON 解析,改用正则从文本按 top-level "cache_tokens":N
+//     提取整数;非法/缺失均匹配失败得 NULL 被 SUM 跳过。位数限制在 9 位内,保证 ::int 不溢出。
+func logStatCacheTokensExpr() string {
+	switch {
+	case common.UsingLogDatabase(common.DatabaseTypePostgreSQL):
+		return `COALESCE(SUM((substring(other from '"cache_tokens"[[:space:]]*:[[:space:]]*(-?[0-9]{1,9})'))::int), 0) cache_tokens`
+	case common.UsingLogDatabase(common.DatabaseTypeMySQL):
+		return "COALESCE(SUM(CASE WHEN JSON_VALID(other) THEN CAST(JSON_EXTRACT(other, '$.cache_tokens') AS SIGNED) ELSE 0 END), 0) cache_tokens"
+	case common.UsingLogDatabase(common.DatabaseTypeClickHouse):
+		return "COALESCE(SUM(JSONExtractInt(other, 'cache_tokens')), 0) cache_tokens"
+	default: // SQLite
+		return "COALESCE(SUM(CASE WHEN json_valid(other) THEN json_extract(other, '$.cache_tokens') ELSE 0 END), 0) cache_tokens"
 	}
-	if rpmTpmQuery, err = applyExplicitLogTextFilter(rpmTpmQuery, "username", username); err != nil {
-		return stat, err
+}
+
+// applyLogStatCommonFilters 施加三条统计查询共用的筛选(用户名/令牌名/模型名/渠道/分组)。
+// 时间区间与日志类型因各查询口径不同,由调用方分别追加。
+func applyLogStatCommonFilters(tx *gorm.DB, modelName, username, tokenName string, channel int, group string) (*gorm.DB, error) {
+	var err error
+	if tx, err = applyExplicitLogTextFilter(tx, "username", username); err != nil {
+		return nil, err
 	}
 	if tokenName != "" {
 		tx = tx.Where("token_name = ?", tokenName)
-		rpmTpmQuery = rpmTpmQuery.Where("token_name = ?", tokenName)
-	}
-	if startTimestamp != 0 {
-		tx = tx.Where("created_at >= ?", startTimestamp)
-	}
-	if endTimestamp != 0 {
-		tx = tx.Where("created_at <= ?", endTimestamp)
 	}
 	if tx, err = applyExplicitLogTextFilter(tx, "model_name", modelName); err != nil {
-		return stat, err
-	}
-	if rpmTpmQuery, err = applyExplicitLogTextFilter(rpmTpmQuery, "model_name", modelName); err != nil {
-		return stat, err
+		return nil, err
 	}
 	if channel != 0 {
 		tx = tx.Where("channel_id = ?", channel)
-		rpmTpmQuery = rpmTpmQuery.Where("channel_id = ?", channel)
 	}
 	if group != "" {
 		tx = tx.Where(logGroupCol+" = ?", group)
-		rpmTpmQuery = rpmTpmQuery.Where(logGroupCol+" = ?", group)
+	}
+	return tx, nil
+}
+
+func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelName string, username string, tokenName string, channel int, group string) (stat Stat, err error) {
+	// 用量/缓存查询:按时间区间 + 其它筛选,仅消费日志(type=2)。
+	// prompt_tokens 与 cache_tokens 累加用于缓存命中率。
+	usageQuery := LOG_DB.Table("logs").
+		Select("COALESCE(sum(quota), 0) quota, COALESCE(sum(prompt_tokens), 0) prompt_tokens, " + logStatCacheTokensExpr())
+	// rpm/tpm 查询:实时口径,忽略时间区间,只看最近 60 秒。
+	rpmTpmQuery := LOG_DB.Table("logs").
+		Select("count(*) rpm, COALESCE(sum(prompt_tokens), 0) + COALESCE(sum(completion_tokens), 0) tpm")
+	// 成功率查询:按时间区间 + 其它筛选,但忽略类型筛选,统计成功(type=2)与失败(type=5)计数。
+	successQuery := LOG_DB.Table("logs").Select(fmt.Sprintf(
+		"COALESCE(SUM(CASE WHEN type = %d THEN 1 ELSE 0 END), 0) success_count, "+
+			"COALESCE(SUM(CASE WHEN type = %d THEN 1 ELSE 0 END), 0) error_count",
+		LogTypeConsume, LogTypeError))
+
+	if usageQuery, err = applyLogStatCommonFilters(usageQuery, modelName, username, tokenName, channel, group); err != nil {
+		return stat, err
+	}
+	if rpmTpmQuery, err = applyLogStatCommonFilters(rpmTpmQuery, modelName, username, tokenName, channel, group); err != nil {
+		return stat, err
+	}
+	if successQuery, err = applyLogStatCommonFilters(successQuery, modelName, username, tokenName, channel, group); err != nil {
+		return stat, err
 	}
 
-	tx = tx.Where("type = ?", LogTypeConsume)
-	rpmTpmQuery = rpmTpmQuery.Where("type = ?", LogTypeConsume)
-
-	// 只统计最近60秒的rpm和tpm
+	// 时间区间:用量与成功率跟随筛选;rpm/tpm 固定最近 60 秒。
+	if startTimestamp != 0 {
+		usageQuery = usageQuery.Where("created_at >= ?", startTimestamp)
+		successQuery = successQuery.Where("created_at >= ?", startTimestamp)
+	}
+	if endTimestamp != 0 {
+		usageQuery = usageQuery.Where("created_at <= ?", endTimestamp)
+		successQuery = successQuery.Where("created_at <= ?", endTimestamp)
+	}
 	rpmTpmQuery = rpmTpmQuery.Where("created_at >= ?", time.Now().Add(-60*time.Second).Unix())
 
-	// 执行查询
-	if err := tx.Scan(&stat).Error; err != nil {
+	// 日志类型:用量/rpm/tpm 仅消费;成功率跨消费与错误两类。
+	usageQuery = usageQuery.Where("type = ?", LogTypeConsume)
+	rpmTpmQuery = rpmTpmQuery.Where("type = ?", LogTypeConsume)
+	successQuery = successQuery.Where("type IN ?", []int{LogTypeConsume, LogTypeError})
+
+	if err := usageQuery.Scan(&stat).Error; err != nil {
 		common.SysError("failed to query log stat: " + err.Error())
 		return stat, errors.New("查询统计数据失败")
 	}
 	if err := rpmTpmQuery.Scan(&stat).Error; err != nil {
 		common.SysError("failed to query rpm/tpm stat: " + err.Error())
 		return stat, errors.New("查询统计数据失败")
+	}
+	// 成功率需要成功(type=2)与失败(type=5)两类计数才有意义。消费日志写入受
+	// LogConsumeEnabled 控制,而错误日志不受控;开关关闭时分子恒为 0 会得到误导性的 0%。
+	// 此时跳过成功率查询,让计数保持 0,由前端渲染为 “-”(不可用)而非虚假的 0%。
+	if common.LogConsumeEnabled {
+		if err := successQuery.Scan(&stat).Error; err != nil {
+			common.SysError("failed to query success rate stat: " + err.Error())
+			return stat, errors.New("查询统计数据失败")
+		}
 	}
 
 	return stat, nil

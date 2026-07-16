@@ -1,5 +1,8 @@
 {
   "translation": {
+    "360": "360",
+    "1000": "1000",
+    "10000": "10000",
     "Enable Request Debugging": "Enable Request Debugging",
     "Capture each request’s headers (redacted) and body into a short-lived cache so admins can inspect them from the usage log. May expose sensitive prompt content; keep off unless troubleshooting.": "Capture each request’s headers (redacted) and body into a short-lived cache so admins can inspect them from the usage log. May expose sensitive prompt content; keep off unless troubleshooting.",
     "Request Debug": "Request Debug",
@@ -11,9 +14,6 @@
     "truncated": "truncated",
     "No request body": "No request body",
     "Debug request": "Debug request",
-    "360": "360",
-    "1000": "1000",
-    "10000": "10000",
     "_copy": "_copy",
     "，": ", ",
     ", and": ", and",
@@ -691,6 +691,7 @@
     "Cache Directory Disk Space": "Cache Directory Disk Space",
     "Cache Directory Info": "Cache Directory Info",
     "Cache Entries": "Cache Entries",
+    "Cache Hit Rate": "Cache Hit Rate",
     "Cache mode": "Cache mode",
     "Cache pricing": "Cache pricing",
     "Cache ratio": "Cache ratio",

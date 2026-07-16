@@ -132,9 +132,13 @@ func GetLogsStat(c *gin.Context) {
 		"success": true,
 		"message": "",
 		"data": gin.H{
-			"quota": stat.Quota,
-			"rpm":   stat.Rpm,
-			"tpm":   stat.Tpm,
+			"quota":         stat.Quota,
+			"rpm":           stat.Rpm,
+			"tpm":           stat.Tpm,
+			"prompt_tokens": stat.PromptTokens,
+			"cache_tokens":  stat.CacheTokens,
+			"success_count": stat.SuccessCount,
+			"error_count":   stat.ErrorCount,
 		},
 	})
 	return
@@ -159,9 +163,13 @@ func GetLogsSelfStat(c *gin.Context) {
 		"success": true,
 		"message": "",
 		"data": gin.H{
-			"quota": quotaNum.Quota,
-			"rpm":   quotaNum.Rpm,
-			"tpm":   quotaNum.Tpm,
+			"quota":         quotaNum.Quota,
+			"rpm":           quotaNum.Rpm,
+			"tpm":           quotaNum.Tpm,
+			"prompt_tokens": quotaNum.PromptTokens,
+			"cache_tokens":  quotaNum.CacheTokens,
+			"success_count": quotaNum.SuccessCount,
+			"error_count":   quotaNum.ErrorCount,
 			//"token": tokenNum,
 		},
 	})

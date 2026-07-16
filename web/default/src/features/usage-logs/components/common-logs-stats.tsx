@@ -22,7 +22,7 @@ import { useTranslation } from 'react-i18next'
 
 import { Skeleton } from '@/components/ui/skeleton'
 import { useIsAdmin } from '@/hooks/use-admin'
-import { formatLogQuota } from '@/lib/format'
+import { formatLogQuota, formatPercent } from '@/lib/format'
 import { cn } from '@/lib/utils'
 
 import { getLogStats, getUserLogStats } from '../api'
@@ -82,9 +82,25 @@ export function CommonLogsStats() {
         <Skeleton className='h-7 w-[150px] rounded-md' />
         <Skeleton className='h-7 w-[100px] rounded-md' />
         <Skeleton className='h-7 w-[120px] rounded-md' />
+        <Skeleton className='h-7 w-[120px] rounded-md' />
+        <Skeleton className='h-7 w-[120px] rounded-md' />
       </div>
     )
   }
+
+  // 成功率 = 成功 / (成功 + 失败);无请求时分母为 0,置 null 让 formatPercent 显示 “-”。
+  const totalRequests = (stats?.success_count || 0) + (stats?.error_count || 0)
+  const successRate =
+    totalRequests > 0 ? ((stats?.success_count || 0) / totalRequests) * 100 : null
+
+  // 缓存命中率 = cache_tokens / prompt_tokens;无输入 token 时同样置 null。
+  // 正常口径下 cache_tokens 是 prompt_tokens 的子集(≤100%),但个别厂商的计费口径可能把缓存
+  // token 计在 prompt 之外,导致比值 >1;用 Math.min 封顶到 100%,避免出现 “150%” 的异常显示。
+  const promptTokens = stats?.prompt_tokens || 0
+  const cacheHitRate =
+    promptTokens > 0
+      ? Math.min(((stats?.cache_tokens || 0) / promptTokens) * 100, 100)
+      : null
 
   return (
     <div className='flex flex-wrap items-center gap-2'>
@@ -102,6 +118,16 @@ export function CommonLogsStats() {
         label={t('TPM')}
         value={stats?.tpm || 0}
         accent='bg-slate-400/70'
+      />
+      <StatBadge
+        label={t('Success rate')}
+        value={formatPercent(successRate)}
+        accent='bg-emerald-500/70'
+      />
+      <StatBadge
+        label={t('Cache Hit Rate')}
+        value={formatPercent(cacheHitRate)}
+        accent='bg-amber-500/70'
       />
     </div>
   )
