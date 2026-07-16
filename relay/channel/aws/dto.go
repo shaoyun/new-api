@@ -70,6 +70,34 @@ func formatRequest(requestBody io.Reader, requestHeader http.Header) (*AwsClaude
 	return &awsClaudeRequest, nil
 }
 
+// stripUnsupportedOutputConfig removes the output_config.format field that AWS
+// Bedrock's Anthropic endpoint rejects with "output_config.format: Extra inputs
+// are not permitted" on models that do not support structured outputs. Other
+// keys (e.g. effort) are preserved. When the object becomes empty it is dropped.
+// Returns the sanitized raw JSON and whether the format field was removed; on
+// parse failure the input is returned unchanged with removed=false.
+func stripUnsupportedOutputConfig(outputConfig json.RawMessage) (json.RawMessage, bool) {
+	if len(outputConfig) == 0 {
+		return outputConfig, false
+	}
+	var parsed map[string]json.RawMessage
+	if err := common.Unmarshal(outputConfig, &parsed); err != nil {
+		return outputConfig, false
+	}
+	if _, ok := parsed["format"]; !ok {
+		return outputConfig, false
+	}
+	delete(parsed, "format")
+	if len(parsed) == 0 {
+		return nil, true
+	}
+	sanitized, err := common.Marshal(parsed)
+	if err != nil {
+		return outputConfig, false
+	}
+	return sanitized, true
+}
+
 // NovaMessage Nova模型使用messages-v1格式
 type NovaMessage struct {
 	Role    string        `json:"role"`

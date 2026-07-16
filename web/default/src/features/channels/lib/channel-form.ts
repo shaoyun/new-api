@@ -203,6 +203,7 @@ export const channelFormSchema = z
     allow_include_obfuscation: z.boolean().optional(), // OpenAI: include usage obfuscation
     allow_inference_geo: z.boolean().optional(), // OpenAI/Anthropic: inference geography
     allow_speed: z.boolean().optional(), // Anthropic: speed mode control
+    allow_output_config_format: z.boolean().optional(), // AWS Bedrock: output_config.format passthrough
     claude_beta_query: z.boolean().optional(), // Anthropic: beta query passthrough
     disable_task_polling_sleep: z.boolean().optional(),
     // Upstream model update settings (stored in settings JSON)
@@ -343,6 +344,7 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   allow_include_obfuscation: false,
   allow_inference_geo: false,
   allow_speed: false,
+  allow_output_config_format: false,
   claude_beta_query: false,
   disable_task_polling_sleep: false,
   upstream_model_update_check_enabled: false,
@@ -399,6 +401,7 @@ export function transformChannelToFormDefaults(
   let allowIncludeObfuscation = false
   let allowInferenceGeo = false
   let allowSpeed = false
+  let allowOutputConfigFormat = false
   let claudeBetaQuery = false
   let disableTaskPollingSleep = false
   let upstreamModelUpdateCheckEnabled = false
@@ -419,6 +422,7 @@ export function transformChannelToFormDefaults(
       allowIncludeObfuscation = parsed.allow_include_obfuscation === true
       allowInferenceGeo = parsed.allow_inference_geo === true
       allowSpeed = parsed.allow_speed === true
+      allowOutputConfigFormat = parsed.allow_output_config_format === true
       claudeBetaQuery = parsed.claude_beta_query === true
       disableTaskPollingSleep = parsed.disable_task_polling_sleep === true
       upstreamModelUpdateCheckEnabled =
@@ -477,6 +481,7 @@ export function transformChannelToFormDefaults(
     allow_include_obfuscation: allowIncludeObfuscation,
     allow_inference_geo: allowInferenceGeo,
     allow_speed: allowSpeed,
+    allow_output_config_format: allowOutputConfigFormat,
     claude_beta_query: claudeBetaQuery,
     disable_task_polling_sleep: disableTaskPollingSleep,
     allow_safety_identifier: allowSafetyIdentifier,
@@ -539,11 +544,18 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
     delete settingsObj.openrouter_enterprise
   }
 
-  // Add aws_key_type for AWS channels (type 33)
+  // Add aws_key_type and allow_output_config_format for AWS channels (type 33)
   if (formData.type === 33) {
     settingsObj.aws_key_type = formData.aws_key_type || 'ak_sk'
-  } else if ('aws_key_type' in settingsObj) {
-    delete settingsObj.aws_key_type
+    settingsObj.allow_output_config_format =
+      formData.allow_output_config_format === true
+  } else {
+    if ('aws_key_type' in settingsObj) {
+      delete settingsObj.aws_key_type
+    }
+    if ('allow_output_config_format' in settingsObj) {
+      delete settingsObj.allow_output_config_format
+    }
   }
 
   // Field passthrough controls:

@@ -286,6 +286,7 @@ const SENSITIVE_FORM_FIELDS = [
   'allow_include_obfuscation',
   'allow_inference_geo',
   'allow_speed',
+  'allow_output_config_format',
   'claude_beta_query',
   'disable_task_polling_sleep',
   'upstream_model_update_check_enabled',
@@ -2216,6 +2217,33 @@ export function ChannelMutateDrawer({
                                           )}
                                     </FormDescription>
                                     <FormMessage />
+                                  </FormItem>
+                                )}
+                              />
+                            )}
+
+                            {currentType === 33 && (
+                              <FormField
+                                control={form.control}
+                                name='allow_output_config_format'
+                                render={({ field }) => (
+                                  <FormItem className='flex items-center justify-between gap-3 px-4 py-3'>
+                                    <div className='space-y-0.5'>
+                                      <FormLabel className='text-sm'>
+                                        {t('Allow output_config.format passthrough')}
+                                      </FormLabel>
+                                      <FormDescription>
+                                        {t(
+                                          'Pass through output_config.format for structured outputs. Disabled by default because Bedrock models without structured-output support reject it with a 400 error.'
+                                        )}
+                                      </FormDescription>
+                                    </div>
+                                    <FormControl>
+                                      <Switch
+                                        checked={field.value}
+                                        onCheckedChange={field.onChange}
+                                      />
+                                    </FormControl>
                                   </FormItem>
                                 )}
                               />

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/QuantumNous/new-api/dto"
+	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/relay/channel"
 	"github.com/QuantumNous/new-api/relay/channel/claude"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
@@ -39,6 +40,25 @@ func (a *Adaptor) ConvertGeminiRequest(*gin.Context, *relaycommon.RelayInfo, *dt
 }
 
 func (a *Adaptor) ConvertClaudeRequest(c *gin.Context, info *relaycommon.RelayInfo, request *dto.ClaudeRequest) (any, error) {
+	// AWS Bedrock rejects structured-output fields on models without support for
+	// them (Pydantic "Extra inputs are not permitted"). Strip both the current
+	// output_config.format and the legacy top-level output_format by default;
+	// operators can opt in via the allow_output_config_format channel setting.
+	if !info.ChannelOtherSettings.AllowOutputConfigFormat {
+		sanitized, removedFormat := stripUnsupportedOutputConfig(request.OutputConfig)
+		request.OutputConfig = sanitized
+		var stripped []string
+		if removedFormat {
+			stripped = append(stripped, "output_config.format")
+		}
+		if len(request.OutputFormat) > 0 {
+			request.OutputFormat = nil
+			stripped = append(stripped, "output_format")
+		}
+		if len(stripped) > 0 {
+			logger.LogWarn(c, fmt.Sprintf("aws bedrock: stripped unsupported structured-output field(s) %s for model %s; enable allow_output_config_format to pass through", strings.Join(stripped, ", "), request.Model))
+		}
+	}
 	for i, message := range request.Messages {
 		updated := false
 		if !message.IsStringContent() {
