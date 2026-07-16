@@ -613,35 +613,66 @@ type Stat struct {
 	Quota int `json:"quota"`
 	Rpm   int `json:"rpm"`
 	Tpm   int `json:"tpm"`
-	// PromptTokens 与 CacheTokens 用于缓存命中率(命中率 = CacheTokens / PromptTokens),
+	// TotalInputTokens 与 CacheTokens 用于缓存命中率(命中率 = CacheTokens / TotalInputTokens),
 	// 统计口径与 Quota 一致:按筛选时间区间 + 其它筛选、仅消费日志(type=2)。
-	PromptTokens int `json:"prompt_tokens"`
-	CacheTokens  int `json:"cache_tokens"`
+	// TotalInputTokens 是“按厂商语义归一后的总输入 token”,不是 prompt_tokens 列本身:
+	// Claude(usage_semantic=anthropic)的 prompt_tokens 只含非缓存输入,cache 与之互斥,
+	// 故其总输入 = prompt_tokens + cache_tokens + cache_creation_tokens;OpenAI/Gemini 等
+	// 的 prompt_tokens 已把缓存计入其中,故总输入 = prompt_tokens。若不归一,筛选到 Claude
+	// 模型时 cache_tokens 远大于 prompt_tokens,比值恒 >100% 被封顶为假的 100%。
+	TotalInputTokens int `json:"total_input_tokens"`
+	CacheTokens      int `json:"cache_tokens"`
 	// SuccessCount / ErrorCount 用于请求成功率(成功率 = SuccessCount / (SuccessCount + ErrorCount)),
 	// 统计口径:按筛选时间区间 + 其它筛选,但忽略类型筛选(强制 type IN (2,5))。
 	SuccessCount int `json:"success_count"`
 	ErrorCount   int `json:"error_count"`
 }
 
-// logStatCacheTokensExpr 返回按日志库方言从 other JSON 文本中提取并累加 cache_tokens 的 SQL 片段。
-// other 为 TEXT 列,cache_tokens 由后端以整数写入(GenerateTextOtherInfo)。所有分支都必须对
-// “非法/空/无该字段” 的历史脏行安全降级为 0,绝不能让单行脏数据使整条聚合报错。
+// logStatJSONIntRowExpr 返回按日志库方言从 other JSON 文本中提取单行某整数字段的 SQL 片段,
+// 缺失/非法/空值一律降级为 0(而非 NULL),以便安全参与逐行算术。other 为 TEXT 列,相关字段
+// 由后端以整数写入(GenerateTextOtherInfo / GenerateClaudeOtherInfo)。
 //   - MySQL/SQLite:用 JSON_VALID/json_valid 守卫,非法 JSON 记 0。
 //   - ClickHouse:JSONExtractInt 对非法/缺失输入本身返回 0。
 //   - PostgreSQL:PG < 16 无跨版本可用的 JSON 合法性判定,且 other::jsonb 对任何非法非空文本
-//     会直接抛错中断整条查询。故不做 JSON 解析,改用正则从文本按 top-level "cache_tokens":N
-//     提取整数;非法/缺失均匹配失败得 NULL 被 SUM 跳过。位数限制在 9 位内,保证 ::int 不溢出。
-func logStatCacheTokensExpr() string {
+//     会直接抛错中断整条查询。故不做 JSON 解析,改用正则从文本按 top-level "field":N 提取整数;
+//     非法/缺失均匹配失败,用 COALESCE 兜底为 0。位数限制在 9 位内,保证 ::int 不溢出。
+func logStatJSONIntRowExpr(field string) string {
 	switch {
 	case common.UsingLogDatabase(common.DatabaseTypePostgreSQL):
-		return `COALESCE(SUM((substring(other from '"cache_tokens"[[:space:]]*:[[:space:]]*(-?[0-9]{1,9})'))::int), 0) cache_tokens`
+		return fmt.Sprintf(`COALESCE((substring(other from '"%s"[[:space:]]*:[[:space:]]*(-?[0-9]{1,9})'))::int, 0)`, field)
 	case common.UsingLogDatabase(common.DatabaseTypeMySQL):
-		return "COALESCE(SUM(CASE WHEN JSON_VALID(other) THEN CAST(JSON_EXTRACT(other, '$.cache_tokens') AS SIGNED) ELSE 0 END), 0) cache_tokens"
+		return fmt.Sprintf("(CASE WHEN JSON_VALID(other) THEN COALESCE(CAST(JSON_EXTRACT(other, '$.%s') AS SIGNED), 0) ELSE 0 END)", field)
 	case common.UsingLogDatabase(common.DatabaseTypeClickHouse):
-		return "COALESCE(SUM(JSONExtractInt(other, 'cache_tokens')), 0) cache_tokens"
+		return fmt.Sprintf("JSONExtractInt(other, '%s')", field)
 	default: // SQLite
-		return "COALESCE(SUM(CASE WHEN json_valid(other) THEN json_extract(other, '$.cache_tokens') ELSE 0 END), 0) cache_tokens"
+		return fmt.Sprintf("(CASE WHEN json_valid(other) THEN COALESCE(json_extract(other, '$.%s'), 0) ELSE 0 END)", field)
 	}
+}
+
+// logStatIsAnthropicRowExpr 返回判定单行是否为 Claude/Anthropic 计费语义的 SQL 布尔片段。
+// 写入端在 Claude 原生语义分支为 other 打上标记 "usage_semantic":"anthropic"(text_quota.go)。
+// 该标记是区分“cache 与 prompt 互斥(Claude)”与“cache 已含于 prompt(OpenAI/Gemini)”的唯一
+// 可靠依据,故用文本 LIKE 匹配即可,无需按方言解析 JSON。
+func logStatIsAnthropicRowExpr() string {
+	return `(other LIKE '%"usage_semantic":"anthropic"%')`
+}
+
+// logStatCacheTokensExpr 返回按筛选累加 cache_tokens(缓存命中率分子)的 SQL 片段。
+func logStatCacheTokensExpr() string {
+	return "COALESCE(SUM(" + logStatJSONIntRowExpr("cache_tokens") + "), 0) cache_tokens"
+}
+
+// logStatTotalInputTokensExpr 返回按厂商语义归一后的“总输入 token”累加片段(缓存命中率分母)。
+// 逐行判定:Anthropic 行的 prompt_tokens 只含非缓存输入,与 cache/cache_creation 互斥,故总输入
+// 需三者相加;其余厂商 prompt_tokens 已包含缓存,直接取列值。这样 SUM(cache) / SUM(total_input)
+// 对两类语义都不会 >100%,历史行也一并被纠正。
+func logStatTotalInputTokensExpr() string {
+	return fmt.Sprintf(
+		"COALESCE(SUM(CASE WHEN %s THEN prompt_tokens + %s + %s ELSE prompt_tokens END), 0) total_input_tokens",
+		logStatIsAnthropicRowExpr(),
+		logStatJSONIntRowExpr("cache_tokens"),
+		logStatJSONIntRowExpr("cache_creation_tokens"),
+	)
 }
 
 // applyLogStatCommonFilters 施加三条统计查询共用的筛选(用户名/令牌名/模型名/渠道/分组)。
@@ -670,7 +701,7 @@ func SumUsedQuota(logType int, startTimestamp int64, endTimestamp int64, modelNa
 	// 用量/缓存查询:按时间区间 + 其它筛选,仅消费日志(type=2)。
 	// prompt_tokens 与 cache_tokens 累加用于缓存命中率。
 	usageQuery := LOG_DB.Table("logs").
-		Select("COALESCE(sum(quota), 0) quota, COALESCE(sum(prompt_tokens), 0) prompt_tokens, " + logStatCacheTokensExpr())
+		Select("COALESCE(sum(quota), 0) quota, " + logStatTotalInputTokensExpr() + ", " + logStatCacheTokensExpr())
 	// rpm/tpm 查询:实时口径,忽略时间区间,只看最近 60 秒。
 	rpmTpmQuery := LOG_DB.Table("logs").
 		Select("count(*) rpm, COALESCE(sum(prompt_tokens), 0) + COALESCE(sum(completion_tokens), 0) tpm")

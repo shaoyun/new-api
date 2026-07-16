@@ -9,10 +9,13 @@ import (
 )
 
 // TestSumUsedQuotaCacheAndSuccessStats 保护统计接口的两条契约:
-//  1. 缓存命中率所需的 prompt_tokens/cache_tokens 聚合——cache_tokens 从 other JSON 文本提取,
+//  1. 缓存命中率所需的 total_input_tokens/cache_tokens 聚合。total_input_tokens 按厂商语义逐行
+//     归一:Anthropic 行(other 带 "usage_semantic":"anthropic")的 prompt_tokens 只含非缓存输入,
+//     与 cache/cache_creation 互斥,故总输入 = prompt + cache_tokens + cache_creation_tokens;其余
+//     厂商的 prompt_tokens 已含缓存,总输入 = prompt_tokens。cache_tokens 从 other JSON 文本提取,
 //     且 other 为空串或非法 JSON 的历史脏行不会让整条聚合报错(守卫降级),只贡献 0。
 //  2. 成功率所需的成功(type=2)/失败(type=5)计数——跨两类日志统计,且错误日志不污染
-//     仅消费口径的 prompt/cache/quota 汇总。
+//     仅消费口径的 total_input/cache/quota 汇总。
 func TestSumUsedQuotaCacheAndSuccessStats(t *testing.T) {
 	require.True(t, common.UsingLogDatabase(common.DatabaseTypeSQLite), "test relies on SQLite json_extract path")
 	require.True(t, common.LogConsumeEnabled, "success rate query requires consume logging enabled")
@@ -24,14 +27,16 @@ func TestSumUsedQuotaCacheAndSuccessStats(t *testing.T) {
 	require.NoError(t, LOG_DB.Where("username = ?", user).Delete(&Log{}).Error)
 
 	rows := []*Log{
-		// 消费日志:prompt/cache/quota 参与汇总。
+		// 非 Anthropic 消费日志:prompt 已含缓存,总输入取 prompt 列本身(cache 不再叠加)。
 		{UserId: 1, Username: user, CreatedAt: base, Type: LogTypeConsume, PromptTokens: 100, Quota: 10, Other: `{"cache_tokens":40}`},
 		{UserId: 1, Username: user, CreatedAt: base, Type: LogTypeConsume, PromptTokens: 200, Quota: 20, Other: `{"cache_tokens":60}`},
-		// 边界:消费日志 other 为空串,守卫应使 cache 记 0,prompt 仍计入。
+		// Anthropic 消费日志:prompt 仅非缓存输入,总输入 = 50+30+20 = 100(cache 与 cache_creation 并入)。
+		{UserId: 1, Username: user, CreatedAt: base, Type: LogTypeConsume, PromptTokens: 50, Quota: 8, Other: `{"usage_semantic":"anthropic","cache_tokens":30,"cache_creation_tokens":20}`},
+		// 边界:消费日志 other 为空串,守卫应使 cache/cache_creation 记 0,prompt 仍计入总输入。
 		{UserId: 1, Username: user, CreatedAt: base, Type: LogTypeConsume, PromptTokens: 50, Quota: 5, Other: ``},
 		// 边界:消费日志 other 为非法(非空)JSON,守卫应使 cache 记 0 且绝不让整条聚合报错。
 		{UserId: 1, Username: user, CreatedAt: base, Type: LogTypeConsume, PromptTokens: 70, Quota: 7, Other: `{bad json`},
-		// 错误日志:计入失败计数,但不进入 prompt/cache/quota 汇总。
+		// 错误日志:计入失败计数,但不进入 total_input/cache/quota 汇总。
 		{UserId: 1, Username: user, CreatedAt: base, Type: LogTypeError, PromptTokens: 999, Quota: 999, Other: `{"cache_tokens":999}`},
 		{UserId: 1, Username: user, CreatedAt: base, Type: LogTypeError},
 	}
@@ -42,13 +47,16 @@ func TestSumUsedQuotaCacheAndSuccessStats(t *testing.T) {
 	stat, err := SumUsedQuota(0, base-10, base+10, "", user, "", 0, "")
 	require.NoError(t, err)
 
-	// 仅消费日志的汇总:prompt 100+200+50+70=420,cache 40+60+0+0=100,quota 10+20+5+7=42。
-	assert.Equal(t, 420, stat.PromptTokens, "prompt tokens sum over consume logs")
-	assert.Equal(t, 100, stat.CacheTokens, "cache tokens sum ignores empty/invalid other")
-	assert.Equal(t, 42, stat.Quota, "quota sum excludes error logs")
+	// 仅消费日志的汇总:
+	//   total_input = 100 + 200 + (50+30+20) + 50 + 70 = 520
+	//   cache       = 40 + 60 + 30 + 0 + 0            = 130
+	//   quota       = 10 + 20 + 8 + 5 + 7             = 50
+	assert.Equal(t, 520, stat.TotalInputTokens, "total input normalized by anthropic semantic")
+	assert.Equal(t, 130, stat.CacheTokens, "cache tokens sum ignores empty/invalid other")
+	assert.Equal(t, 50, stat.Quota, "quota sum excludes error logs")
 
 	// 成功率计数跨消费与错误两类。
-	assert.Equal(t, 4, stat.SuccessCount, "success = consume log count")
+	assert.Equal(t, 5, stat.SuccessCount, "success = consume log count")
 	assert.Equal(t, 2, stat.ErrorCount, "error = error log count")
 }
 
@@ -80,7 +88,7 @@ func TestSumUsedQuotaSuccessSkippedWhenConsumeLogDisabled(t *testing.T) {
 	// 成功率查询被跳过,计数保持 0(前端据此显示 “-”),不产生误导性的 0%。
 	assert.Equal(t, 0, stat.SuccessCount, "success count must stay 0 when consume logging disabled")
 	assert.Equal(t, 0, stat.ErrorCount, "error count must stay 0 when consume logging disabled")
-	// 用量/缓存仍照常统计,不受开关影响。
-	assert.Equal(t, 100, stat.PromptTokens, "usage query unaffected by consume-log toggle")
+	// 用量/缓存仍照常统计,不受开关影响。该行非 Anthropic,总输入取 prompt 列本身。
+	assert.Equal(t, 100, stat.TotalInputTokens, "usage query unaffected by consume-log toggle")
 	assert.Equal(t, 25, stat.CacheTokens, "cache query unaffected by consume-log toggle")
 }

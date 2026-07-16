@@ -93,13 +93,13 @@ export function CommonLogsStats() {
   const successRate =
     totalRequests > 0 ? ((stats?.success_count || 0) / totalRequests) * 100 : null
 
-  // 缓存命中率 = cache_tokens / prompt_tokens;无输入 token 时同样置 null。
-  // 正常口径下 cache_tokens 是 prompt_tokens 的子集(≤100%),但个别厂商的计费口径可能把缓存
-  // token 计在 prompt 之外,导致比值 >1;用 Math.min 封顶到 100%,避免出现 “150%” 的异常显示。
-  const promptTokens = stats?.prompt_tokens || 0
+  // 缓存命中率 = cache_tokens / total_input_tokens;无输入 token 时置 null 让 formatPercent 显示 “-”。
+  // total_input_tokens 已在后端按厂商语义归一(Claude 的缓存与 prompt 互斥,总输入需并入缓存),
+  // 故比值天然 ≤100%。保留 Math.min 仅作显示层兜底,防止个别脏数据越界。
+  const totalInputTokens = stats?.total_input_tokens || 0
   const cacheHitRate =
-    promptTokens > 0
-      ? Math.min(((stats?.cache_tokens || 0) / promptTokens) * 100, 100)
+    totalInputTokens > 0
+      ? Math.min(((stats?.cache_tokens || 0) / totalInputTokens) * 100, 100)
       : null
 
   return (

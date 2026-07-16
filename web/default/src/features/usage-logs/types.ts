@@ -227,8 +227,10 @@ export interface LogStatistics {
   quota: number
   rpm: number
   tpm: number
-  // 缓存命中率 = cache_tokens / prompt_tokens(仅消费日志,跟随筛选区间)
-  prompt_tokens: number
+  // 缓存命中率 = cache_tokens / total_input_tokens(仅消费日志,跟随筛选区间)。
+  // total_input_tokens 已按厂商语义在后端归一(Claude 的缓存与 prompt 互斥,需并入总输入),
+  // 保证比值 ≤100%,避免筛选到 Claude 模型时被封顶成假的 100%。
+  total_input_tokens: number
   cache_tokens: number
   // 请求成功率 = success_count / (success_count + error_count)(忽略类型筛选,跟随筛选区间)
   success_count: number
