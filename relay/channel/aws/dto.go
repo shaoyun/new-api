@@ -7,20 +7,11 @@ import (
 	"net/http"
 	"strings"
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/dto"
 	"github.com/QuantumNous/new-api/logger"
+	"github.com/QuantumNous/new-api/setting/model_setting"
 )
-
-// bedrockSupportedBetaFlags is the whitelist of anthropic_beta values supported by AWS Bedrock.
-// Flags not in this list will be silently dropped to avoid 400 errors.
-// Ref: https://docs.aws.amazon.com/bedrock/latest/userguide/model-parameters-anthropic-claude-messages-request-response.html
-var bedrockSupportedBetaFlags = map[string]bool{
-	"claude-code-20250219":            true,
-	"interleaved-thinking-2025-05-14": true,
-	"context-management-2025-06-27":   true,
-	"effort-2025-11-24":               true,
-	"computer-use-2025-11-24":         true,
-}
 
 type AwsClaudeRequest struct {
 	// AnthropicVersion should be "bedrock-2023-05-31"
@@ -41,7 +32,7 @@ type AwsClaudeRequest struct {
 	//Metadata         json.RawMessage     `json:"metadata,omitempty"`
 }
 
-func formatRequest(requestBody io.Reader, requestHeader http.Header) (*AwsClaudeRequest, error) {
+func formatRequest(requestBody io.Reader, requestHeader http.Header, model string) (*AwsClaudeRequest, error) {
 	var awsClaudeRequest AwsClaudeRequest
 	err := common.DecodeJson(requestBody, &awsClaudeRequest)
 	if err != nil {
@@ -51,13 +42,9 @@ func formatRequest(requestBody io.Reader, requestHeader http.Header) (*AwsClaude
 
 	anthropicBetaValues := requestHeader.Get("anthropic-beta")
 	if len(anthropicBetaValues) > 0 {
-		var filtered []string
-		for _, flag := range strings.Split(anthropicBetaValues, ",") {
-			flag = strings.TrimSpace(flag)
-			if bedrockSupportedBetaFlags[flag] {
-				filtered = append(filtered, flag)
-			}
-		}
+		filtered := model_setting.GetClaudeBetaFilterSettings().FilterByChannelType(
+			constant.ChannelTypeAws, model, strings.Split(anthropicBetaValues, ","),
+		)
 		if len(filtered) > 0 {
 			betaJson, err := json.Marshal(filtered)
 			if err != nil {
