@@ -333,6 +333,8 @@
     "Allow service_tier passthrough": "Cho phép chuyển tiếp service_tier",
     "Allow speed passthrough": "Cho phép truyền speed",
     "Allow output_config.format passthrough": "Cho phép truyền output_config.format",
+    "Allow context_management passthrough": "Allow context_management passthrough",
+    "Pass through the context_management field. Disabled by default because upstreams that land on Bedrock (directly or via a proxy) reject it with a 400 error such as \"invalid beta flag\". Only enable it when the upstream natively supports context_management.": "Pass through the context_management field. Disabled by default because upstreams that land on Bedrock (directly or via a proxy) reject it with a 400 error such as \"invalid beta flag\". Only enable it when the upstream natively supports context_management.",
     "Allow upstream callbacks": "Cho phép callback upstream",
     "Allow users to check in daily for random quota rewards": "Cho phép người dùng điểm danh hàng ngày để nhận phần thưởng hạn ngạch ngẫu nhiên",
     "Allow users to enter promo codes": "Cho phép người dùng nhập mã khuyến mãi",

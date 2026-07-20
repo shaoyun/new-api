@@ -287,6 +287,7 @@ const SENSITIVE_FORM_FIELDS = [
   'allow_inference_geo',
   'allow_speed',
   'allow_output_config_format',
+  'allow_context_management',
   'claude_beta_query',
   'disable_task_polling_sleep',
   'upstream_model_update_check_enabled',
@@ -2235,6 +2236,33 @@ export function ChannelMutateDrawer({
                                       <FormDescription>
                                         {t(
                                           'Pass through output_config.format for structured outputs. Disabled by default because Bedrock models without structured-output support reject it with a 400 error.'
+                                        )}
+                                      </FormDescription>
+                                    </div>
+                                    <FormControl>
+                                      <Switch
+                                        checked={field.value}
+                                        onCheckedChange={field.onChange}
+                                      />
+                                    </FormControl>
+                                  </FormItem>
+                                )}
+                              />
+                            )}
+
+                            {(currentType === 14 || currentType === 33) && (
+                              <FormField
+                                control={form.control}
+                                name='allow_context_management'
+                                render={({ field }) => (
+                                  <FormItem className='flex items-center justify-between gap-3 px-4 py-3'>
+                                    <div className='space-y-0.5'>
+                                      <FormLabel className='text-sm'>
+                                        {t('Allow context_management passthrough')}
+                                      </FormLabel>
+                                      <FormDescription>
+                                        {t(
+                                          'Pass through the context_management field. Disabled by default because upstreams that land on Bedrock (directly or via a proxy) reject it with a 400 error such as "invalid beta flag". Only enable it when the upstream natively supports context_management.'
                                         )}
                                       </FormDescription>
                                     </div>

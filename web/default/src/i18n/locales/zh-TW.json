@@ -333,6 +333,8 @@
     "Allow service_tier passthrough": "允許透傳 service_tier",
     "Allow speed passthrough": "允許 speed 透傳",
     "Allow output_config.format passthrough": "允許 output_config.format 透傳",
+    "Allow context_management passthrough": "Allow context_management passthrough",
+    "Pass through the context_management field. Disabled by default because upstreams that land on Bedrock (directly or via a proxy) reject it with a 400 error such as \"invalid beta flag\". Only enable it when the upstream natively supports context_management.": "Pass through the context_management field. Disabled by default because upstreams that land on Bedrock (directly or via a proxy) reject it with a 400 error such as \"invalid beta flag\". Only enable it when the upstream natively supports context_management.",
     "Allow upstream callbacks": "允許上游Callback",
     "Allow users to check in daily for random quota rewards": "允許用戶每日簽到獲取隨機額度獎勵",
     "Allow users to enter promo codes": "允許用戶輸入促銷代碼",

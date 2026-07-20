@@ -860,6 +860,13 @@ func RemoveDisabledFields(jsonData []byte, channelOtherSettings dto.ChannelOther
 		}
 	}
 
+	// 默认移除 context_management，除非明确允许（经代理接入的 Bedrock 等上游会因该字段返回 400，如 "invalid beta flag"）
+	if !channelOtherSettings.AllowContextManagement {
+		if _, exists := data["context_management"]; exists {
+			delete(data, "context_management")
+		}
+	}
+
 	jsonDataAfter, err := common.Marshal(data)
 	if err != nil {
 		common.SysError("RemoveDisabledFields Marshal error :" + err.Error())
@@ -877,6 +884,7 @@ func hasRemovableDisabledField(jsonData []byte, channelOtherSettings dto.Channel
 		"store",
 		"safety_identifier",
 		"stream_options.include_obfuscation",
+		"context_management",
 	)
 
 	return (!channelOtherSettings.AllowServiceTier && values[0].Exists()) ||
@@ -884,7 +892,8 @@ func hasRemovableDisabledField(jsonData []byte, channelOtherSettings dto.Channel
 		(!channelOtherSettings.AllowSpeed && values[2].Exists()) ||
 		(channelOtherSettings.DisableStore && values[3].Exists()) ||
 		(!channelOtherSettings.AllowSafetyIdentifier && values[4].Exists()) ||
-		(!channelOtherSettings.AllowIncludeObfuscation && values[5].Exists())
+		(!channelOtherSettings.AllowIncludeObfuscation && values[5].Exists()) ||
+		(!channelOtherSettings.AllowContextManagement && values[6].Exists())
 }
 
 // RemoveGeminiDisabledFields removes disabled fields from Gemini request JSON data

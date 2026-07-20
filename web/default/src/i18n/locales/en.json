@@ -333,6 +333,8 @@
     "Allow service_tier passthrough": "Allow service_tier passthrough",
     "Allow speed passthrough": "Allow speed passthrough",
     "Allow output_config.format passthrough": "Allow output_config.format passthrough",
+    "Allow context_management passthrough": "Allow context_management passthrough",
+    "Pass through the context_management field. Disabled by default because upstreams that land on Bedrock (directly or via a proxy) reject it with a 400 error such as \"invalid beta flag\". Only enable it when the upstream natively supports context_management.": "Pass through the context_management field. Disabled by default because upstreams that land on Bedrock (directly or via a proxy) reject it with a 400 error such as \"invalid beta flag\". Only enable it when the upstream natively supports context_management.",
     "Allow upstream callbacks": "Allow upstream callbacks",
     "Allow users to check in daily for random quota rewards": "Allow users to check in daily for random quota rewards",
     "Allow users to enter promo codes": "Allow users to enter promo codes",
