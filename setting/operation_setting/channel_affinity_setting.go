@@ -55,7 +55,11 @@ var claudeCliPassThroughHeaders = []string{
 	"X-Stainless-Timeout",
 	"User-Agent",
 	"X-App",
-	"Anthropic-Beta",
+	// 注意：不要在这里透传 "Anthropic-Beta"。channel affinity 的 pass_headers 在
+	// SetupRequestHeader(claude_beta_filter 过滤器所在处)之后执行，若透传原始
+	// anthropic-beta 会用客户端未过滤的 beta 覆盖过滤结果，导致 Bedrock 落地渠道
+	// 收到不支持的 beta flag 而返回 400 "invalid beta flag"。beta flag 必须统一由
+	// claude_beta_filter 白名单管控，此处不得恢复原始值。
 	"Anthropic-Dangerous-Direct-Browser-Access",
 	"Anthropic-Version",
 }
