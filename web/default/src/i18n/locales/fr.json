@@ -333,6 +333,8 @@
     "Allow service_tier passthrough": "Autoriser la transmission de service_tier",
     "Allow speed passthrough": "Autoriser la transmission de speed",
     "Allow output_config.format passthrough": "Autoriser la transmission de output_config.format",
+    "Allow context_management passthrough": "Allow context_management passthrough",
+    "Pass through the context_management field. Disabled by default because upstreams that land on Bedrock (directly or via a proxy) reject it with a 400 error such as \"context_management: Extra inputs are not permitted\". Only enable it when the upstream natively supports context_management.": "Pass through the context_management field. Disabled by default because upstreams that land on Bedrock (directly or via a proxy) reject it with a 400 error such as \"context_management: Extra inputs are not permitted\". Only enable it when the upstream natively supports context_management.",
     "Allow upstream callbacks": "Autoriser les callbacks en amont",
     "Allow users to check in daily for random quota rewards": "Permettre aux utilisateurs de se connecter quotidiennement pour des récompenses de quota aléatoires",
     "Allow users to enter promo codes": "Autoriser les utilisateurs à saisir des codes promotionnels",

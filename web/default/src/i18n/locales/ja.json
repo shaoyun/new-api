@@ -333,6 +333,8 @@
     "Allow service_tier passthrough": "Service_tierパススルーを許可する",
     "Allow speed passthrough": "speed パススルーを許可",
     "Allow output_config.format passthrough": "output_config.format のパススルーを許可",
+    "Allow context_management passthrough": "Allow context_management passthrough",
+    "Pass through the context_management field. Disabled by default because upstreams that land on Bedrock (directly or via a proxy) reject it with a 400 error such as \"context_management: Extra inputs are not permitted\". Only enable it when the upstream natively supports context_management.": "Pass through the context_management field. Disabled by default because upstreams that land on Bedrock (directly or via a proxy) reject it with a 400 error such as \"context_management: Extra inputs are not permitted\". Only enable it when the upstream natively supports context_management.",
     "Allow upstream callbacks": "アップストリームコールバックを許可",
     "Allow users to check in daily for random quota rewards": "ユーザーが毎日チェックインしてランダムなクォータ報酬を受け取れるようにする",
     "Allow users to enter promo codes": "ユーザーがプロモーションコードを入力できるようにする",

@@ -333,6 +333,8 @@
     "Allow service_tier passthrough": "允许透传 service_tier",
     "Allow speed passthrough": "允许 speed 透传",
     "Allow output_config.format passthrough": "允许 output_config.format 透传",
+    "Allow context_management passthrough": "允许 context_management 透传",
+    "Pass through the context_management field. Disabled by default because upstreams that land on Bedrock (directly or via a proxy) reject it with a 400 error such as \"context_management: Extra inputs are not permitted\". Only enable it when the upstream natively supports context_management.": "透传 context_management 字段。默认关闭，因为最终落地到 Bedrock（直连或经代理接入）的上游会因该字段返回 400（例如 \"context_management: Extra inputs are not permitted\"）。仅在确认上游原生支持 context_management 时开启。",
     "Allow upstream callbacks": "允许上游回调",
     "Allow users to check in daily for random quota rewards": "允许用户每日签到获取随机额度奖励",
     "Allow users to enter promo codes": "允许用户输入促销代码",

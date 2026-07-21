@@ -844,6 +844,29 @@ func RemoveDisabledFields(jsonData []byte, channelOtherSettings dto.ChannelOther
 		}
 	}
 
+	// 默认移除 context_management，除非明确允许（最终落地到 Bedrock 的上游——直连或经代理接入——会因该 body 字段返回 400，如 "context_management: Extra inputs are not permitted"）
+	if !channelOtherSettings.AllowContextManagement {
+		if _, exists := data["context_management"]; exists {
+			delete(data, "context_management")
+		}
+	}
+
+	// 默认移除 output_config.format，除非明确允许（同 context_management，最终落地到 Bedrock 的上游——直连或经代理接入——会对不支持结构化输出的模型返回 400，如 "output_config.format: Extra inputs are not permitted"）；仅剥离 format 子字段，保留 effort 等其它键，整个对象为空时再删除
+	if !channelOtherSettings.AllowOutputConfigFormat {
+		if outputConfigAny, exists := data["output_config"]; exists {
+			if outputConfig, ok := outputConfigAny.(map[string]interface{}); ok {
+				if _, formatExists := outputConfig["format"]; formatExists {
+					delete(outputConfig, "format")
+					if len(outputConfig) == 0 {
+						delete(data, "output_config")
+					} else {
+						data["output_config"] = outputConfig
+					}
+				}
+			}
+		}
+	}
+
 	// 默认移除 stream_options.include_obfuscation，除非明确允许（避免关闭响应流混淆保护）
 	if !channelOtherSettings.AllowIncludeObfuscation {
 		if streamOptionsAny, exists := data["stream_options"]; exists {
@@ -877,6 +900,8 @@ func hasRemovableDisabledField(jsonData []byte, channelOtherSettings dto.Channel
 		"store",
 		"safety_identifier",
 		"stream_options.include_obfuscation",
+		"context_management",
+		"output_config.format",
 	)
 
 	return (!channelOtherSettings.AllowServiceTier && values[0].Exists()) ||
@@ -884,7 +909,9 @@ func hasRemovableDisabledField(jsonData []byte, channelOtherSettings dto.Channel
 		(!channelOtherSettings.AllowSpeed && values[2].Exists()) ||
 		(channelOtherSettings.DisableStore && values[3].Exists()) ||
 		(!channelOtherSettings.AllowSafetyIdentifier && values[4].Exists()) ||
-		(!channelOtherSettings.AllowIncludeObfuscation && values[5].Exists())
+		(!channelOtherSettings.AllowIncludeObfuscation && values[5].Exists()) ||
+		(!channelOtherSettings.AllowContextManagement && values[6].Exists()) ||
+		(!channelOtherSettings.AllowOutputConfigFormat && values[7].Exists())
 }
 
 // RemoveGeminiDisabledFields removes disabled fields from Gemini request JSON data
