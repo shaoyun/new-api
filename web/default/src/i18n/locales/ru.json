@@ -333,8 +333,6 @@
     "Allow service_tier passthrough": "Разрешить сквозную передачу service_tier",
     "Allow speed passthrough": "Разрешить передачу speed",
     "Allow output_config.format passthrough": "Разрешить передачу output_config.format",
-    "Allow context_management passthrough": "Allow context_management passthrough",
-    "Pass through the context_management field. Disabled by default because upstreams that land on Bedrock (directly or via a proxy) reject it with a 400 error such as \"invalid beta flag\". Only enable it when the upstream natively supports context_management.": "Pass through the context_management field. Disabled by default because upstreams that land on Bedrock (directly or via a proxy) reject it with a 400 error such as \"invalid beta flag\". Only enable it when the upstream natively supports context_management.",
     "Allow upstream callbacks": "Разрешить обратные вызовы upstream",
     "Allow users to check in daily for random quota rewards": "Разрешить пользователям регистрироваться ежедневно для получения случайных квотных наград",
     "Allow users to enter promo codes": "Разрешить пользователям вводить промокоды",
