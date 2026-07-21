@@ -16,13 +16,14 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { Download, Loader2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
 import { SectionPageLayout } from '@/components/layout'
+import { MultiSelect, type Option } from '@/components/multi-select'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -33,9 +34,8 @@ import {
 } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
 
-import { fetchBillingExport } from './api'
+import { fetchBillingExport, fetchCustomerOptions } from './api'
 
 // datetime-local (step=1) yields "YYYY-MM-DDTHH:mm:ss" interpreted in the
 // browser's local timezone. Convert to Unix seconds; return null if unparseable.
@@ -73,16 +73,40 @@ function BillingExportContent() {
 
   const [startTime, setStartTime] = useState(toLocalInputValue(dayStart))
   const [endTime, setEndTime] = useState(toLocalInputValue(now))
-  const [usernamesRaw, setUsernamesRaw] = useState('')
+  const [customerOptions, setCustomerOptions] = useState<Option[]>([])
+  const [selectedUsernames, setSelectedUsernames] = useState<string[]>([])
+  const [isLoadingCustomers, setIsLoadingCustomers] = useState(true)
   const [isExporting, setIsExporting] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    const loadCustomers = async () => {
+      setIsLoadingCustomers(true)
+      try {
+        const { options, truncated } = await fetchCustomerOptions()
+        if (cancelled) return
+        setCustomerOptions(options)
+        if (truncated) {
+          toast.warning(
+            t('Customer list is large; some customers may not be listed.')
+          )
+        }
+      } catch {
+        if (!cancelled) toast.error(t('Failed to load customers'))
+      } finally {
+        if (!cancelled) setIsLoadingCustomers(false)
+      }
+    }
+    void loadCustomers()
+    return () => {
+      cancelled = true
+    }
+  }, [t])
 
   const handleExport = async () => {
     const startTimestamp = localDateTimeToUnixSeconds(startTime)
     const endTimestamp = localDateTimeToUnixSeconds(endTime)
-    const usernames = usernamesRaw
-      .split(/[\n,]/)
-      .map((s) => s.trim())
-      .filter(Boolean)
+    const usernames = selectedUsernames
 
     if (startTimestamp === null || endTimestamp === null) {
       toast.error(t('Please select a valid time range'))
@@ -93,7 +117,7 @@ function BillingExportContent() {
       return
     }
     if (usernames.length === 0) {
-      toast.error(t('Please enter at least one customer username'))
+      toast.error(t('Please select at least one customer'))
       return
     }
 
@@ -157,16 +181,21 @@ function BillingExportContent() {
 
           <div className='flex flex-col gap-2'>
             <Label htmlFor='billing-export-usernames'>
-              {t('Customer Usernames')}
+              {t('Customers')}
             </Label>
-            <Textarea
+            <MultiSelect
               id='billing-export-usernames'
-              rows={4}
-              placeholder={t(
-                'Enter usernames, separated by comma or newline'
-              )}
-              value={usernamesRaw}
-              onChange={(e) => setUsernamesRaw(e.target.value)}
+              options={customerOptions}
+              selected={selectedUsernames}
+              onChange={setSelectedUsernames}
+              disabled={isLoadingCustomers}
+              maxVisibleChips={12}
+              placeholder={
+                isLoadingCustomers
+                  ? t('Loading customers...')
+                  : t('Select one or more customers')
+              }
+              emptyText={t('No matching customers')}
             />
           </div>
 

@@ -5102,6 +5102,13 @@
     "End time must be later than start time": "结束时间必须晚于起始时间",
     "Please enter at least one customer username": "请至少输入一个客户用户名",
     "Billing export started downloading": "账单导出已开始下载",
-    "Failed to export billing records": "导出账单记录失败"
+    "Failed to export billing records": "导出账单记录失败",
+    "Customers": "客户",
+    "Loading customers...": "正在加载客户...",
+    "Select one or more customers": "选择一个或多个客户",
+    "No matching customers": "没有匹配的客户",
+    "Please select at least one customer": "请至少选择一个客户",
+    "Customer list is large; some customers may not be listed.": "客户数量较多,部分客户可能未列出。",
+    "Failed to load customers": "加载客户失败"
   }
 }

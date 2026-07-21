@@ -5102,6 +5102,13 @@
     "End time must be later than start time": "End time must be later than start time",
     "Please enter at least one customer username": "Please enter at least one customer username",
     "Billing export started downloading": "Billing export started downloading",
-    "Failed to export billing records": "Failed to export billing records"
+    "Failed to export billing records": "Failed to export billing records",
+    "Customers": "Customers",
+    "Loading customers...": "Loading customers...",
+    "Select one or more customers": "Select one or more customers",
+    "No matching customers": "No matching customers",
+    "Please select at least one customer": "Please select at least one customer",
+    "Customer list is large; some customers may not be listed.": "Customer list is large; some customers may not be listed.",
+    "Failed to load customers": "Failed to load customers"
   }
 }
