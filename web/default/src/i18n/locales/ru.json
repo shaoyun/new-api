@@ -5090,6 +5090,18 @@
     "Zero retention": "Без хранения данных",
     "Zhipu": "Zhipu",
     "Zhipu V4": "Zhipu V4",
-    "Zoom": "Zoom"
+    "Zoom": "Zoom",
+    "Billing Export": "Billing Export",
+    "Export Conditions": "Export Conditions",
+    "Both successful and failed requests are included. The file is exported as CSV.": "Both successful and failed requests are included. The file is exported as CSV.",
+    "Customer Usernames": "Customer Usernames",
+    "Enter usernames, separated by comma or newline": "Enter usernames, separated by comma or newline",
+    "Export CSV": "Export CSV",
+    "Exporting...": "Exporting...",
+    "Please select a valid time range": "Please select a valid time range",
+    "End time must be later than start time": "End time must be later than start time",
+    "Please enter at least one customer username": "Please enter at least one customer username",
+    "Billing export started downloading": "Billing export started downloading",
+    "Failed to export billing records": "Failed to export billing records"
   }
 }

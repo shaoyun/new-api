@@ -5090,6 +5090,18 @@
     "Zero retention": "零数据保留",
     "Zhipu": "智谱",
     "Zhipu V4": "智谱 V4",
-    "Zoom": "缩放"
+    "Zoom": "缩放",
+    "Billing Export": "账单导出",
+    "Export Conditions": "导出条件",
+    "Both successful and failed requests are included. The file is exported as CSV.": "成功与失败的请求都会包含在内,文件以 CSV 格式导出。",
+    "Customer Usernames": "客户用户名",
+    "Enter usernames, separated by comma or newline": "输入用户名,使用逗号或换行分隔",
+    "Export CSV": "导出 CSV",
+    "Exporting...": "正在导出...",
+    "Please select a valid time range": "请选择有效的时间范围",
+    "End time must be later than start time": "结束时间必须晚于起始时间",
+    "Please enter at least one customer username": "请至少输入一个客户用户名",
+    "Billing export started downloading": "账单导出已开始下载",
+    "Failed to export billing records": "导出账单记录失败"
   }
 }

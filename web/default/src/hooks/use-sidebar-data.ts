@@ -20,6 +20,7 @@ import {
   Activity,
   Box,
   CreditCard,
+  Download,
   FileText,
   FlaskConical,
   Key,
@@ -144,6 +145,11 @@ export function useSidebarData(): SidebarData {
             title: t('Subscriptions'),
             url: '/subscriptions',
             icon: CreditCard,
+          },
+          {
+            title: t('Billing Export'),
+            url: '/billing-export',
+            icon: Download,
           },
           {
             title: t('System Info'),

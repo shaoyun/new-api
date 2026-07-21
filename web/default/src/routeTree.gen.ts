@@ -22,6 +22,7 @@ import { Route as OauthProviderRouteImport } from './routes/oauth/$provider'
 import { Route as ConsoleTopupRouteImport } from './routes/console/topup'
 import { Route as ConsoleLogRouteImport } from './routes/console/log'
 import { Route as AuthenticatedChat2linkRouteImport } from './routes/_authenticated/chat2link'
+import { Route as AuthenticatedBillingExportRouteImport } from './routes/_authenticated/billing-export'
 import { Route as errors503RouteImport } from './routes/(errors)/503'
 import { Route as errors500RouteImport } from './routes/(errors)/500'
 import { Route as errors404RouteImport } from './routes/(errors)/404'
@@ -133,6 +134,12 @@ const AuthenticatedChat2linkRoute = AuthenticatedChat2linkRouteImport.update({
   path: '/chat2link',
   getParentRoute: () => AuthenticatedRouteRoute,
 } as any)
+const AuthenticatedBillingExportRoute =
+  AuthenticatedBillingExportRouteImport.update({
+    id: '/billing-export',
+    path: '/billing-export',
+    getParentRoute: () => AuthenticatedRouteRoute,
+  } as any)
 const errors503Route = errors503RouteImport.update({
   id: '/(errors)/503',
   path: '/503',
@@ -416,6 +423,7 @@ export interface FileRoutesByFullPath {
   '/404': typeof errors404Route
   '/500': typeof errors500Route
   '/503': typeof errors503Route
+  '/billing-export': typeof AuthenticatedBillingExportRoute
   '/chat2link': typeof AuthenticatedChat2linkRoute
   '/console/log': typeof ConsoleLogRoute
   '/console/topup': typeof ConsoleTopupRoute
@@ -475,6 +483,7 @@ export interface FileRoutesByTo {
   '/404': typeof errors404Route
   '/500': typeof errors500Route
   '/503': typeof errors503Route
+  '/billing-export': typeof AuthenticatedBillingExportRoute
   '/chat2link': typeof AuthenticatedChat2linkRoute
   '/console/log': typeof ConsoleLogRoute
   '/console/topup': typeof ConsoleTopupRoute
@@ -538,6 +547,7 @@ export interface FileRoutesById {
   '/(errors)/404': typeof errors404Route
   '/(errors)/500': typeof errors500Route
   '/(errors)/503': typeof errors503Route
+  '/_authenticated/billing-export': typeof AuthenticatedBillingExportRoute
   '/_authenticated/chat2link': typeof AuthenticatedChat2linkRoute
   '/console/log': typeof ConsoleLogRoute
   '/console/topup': typeof ConsoleTopupRoute
@@ -600,6 +610,7 @@ export interface FileRouteTypes {
     | '/404'
     | '/500'
     | '/503'
+    | '/billing-export'
     | '/chat2link'
     | '/console/log'
     | '/console/topup'
@@ -659,6 +670,7 @@ export interface FileRouteTypes {
     | '/404'
     | '/500'
     | '/503'
+    | '/billing-export'
     | '/chat2link'
     | '/console/log'
     | '/console/topup'
@@ -721,6 +733,7 @@ export interface FileRouteTypes {
     | '/(errors)/404'
     | '/(errors)/500'
     | '/(errors)/503'
+    | '/_authenticated/billing-export'
     | '/_authenticated/chat2link'
     | '/console/log'
     | '/console/topup'
@@ -877,6 +890,13 @@ declare module '@tanstack/react-router' {
       path: '/chat2link'
       fullPath: '/chat2link'
       preLoaderRoute: typeof AuthenticatedChat2linkRouteImport
+      parentRoute: typeof AuthenticatedRouteRoute
+    }
+    '/_authenticated/billing-export': {
+      id: '/_authenticated/billing-export'
+      path: '/billing-export'
+      fullPath: '/billing-export'
+      preLoaderRoute: typeof AuthenticatedBillingExportRouteImport
       parentRoute: typeof AuthenticatedRouteRoute
     }
     '/(errors)/503': {
@@ -1296,6 +1316,7 @@ const AuthenticatedSystemSettingsRouteRouteWithChildren =
 
 interface AuthenticatedRouteRouteChildren {
   AuthenticatedSystemSettingsRouteRoute: typeof AuthenticatedSystemSettingsRouteRouteWithChildren
+  AuthenticatedBillingExportRoute: typeof AuthenticatedBillingExportRoute
   AuthenticatedChat2linkRoute: typeof AuthenticatedChat2linkRoute
   AuthenticatedChatChatIdRoute: typeof AuthenticatedChatChatIdRoute
   AuthenticatedDashboardSectionRoute: typeof AuthenticatedDashboardSectionRoute
@@ -1319,6 +1340,7 @@ interface AuthenticatedRouteRouteChildren {
 const AuthenticatedRouteRouteChildren: AuthenticatedRouteRouteChildren = {
   AuthenticatedSystemSettingsRouteRoute:
     AuthenticatedSystemSettingsRouteRouteWithChildren,
+  AuthenticatedBillingExportRoute: AuthenticatedBillingExportRoute,
   AuthenticatedChat2linkRoute: AuthenticatedChat2linkRoute,
   AuthenticatedChatChatIdRoute: AuthenticatedChatChatIdRoute,
   AuthenticatedDashboardSectionRoute: AuthenticatedDashboardSectionRoute,

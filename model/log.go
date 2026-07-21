@@ -559,6 +559,43 @@ func GetAllLogs(logType int, startTimestamp int64, endTimestamp int64, modelName
 	return logs, total, err
 }
 
+// ExportLogTypes are the log types included in an admin billing export:
+// successful consume rows (type 2) and error rows (type 5).
+var ExportLogTypes = []int{LogTypeConsume, LogTypeError}
+
+// GetLogsForExport returns a single keyset page of logs for the admin billing
+// export, filtered by time window, username list, and type IN (consume, error).
+// Rows are ordered by (created_at, id) ascending; pass the last row's
+// (createdAt, id) as the cursor to fetch the next page. The first call should
+// pass lastCreatedAt=0, lastId=0. This avoids OFFSET so large exports stay fast
+// and memory-flat across SQLite/MySQL/PostgreSQL.
+func GetLogsForExport(startTimestamp int64, endTimestamp int64, usernames []string, lastCreatedAt int64, lastId int, limit int) ([]*Log, error) {
+	if len(usernames) == 0 {
+		return nil, errors.New("usernames is required")
+	}
+	if limit <= 0 {
+		limit = 1000
+	}
+	tx := LOG_DB.Where("logs.type IN ?", ExportLogTypes).
+		Where("logs.username IN ?", usernames)
+	if startTimestamp != 0 {
+		tx = tx.Where("logs.created_at >= ?", startTimestamp)
+	}
+	if endTimestamp != 0 {
+		tx = tx.Where("logs.created_at <= ?", endTimestamp)
+	}
+	// Keyset cursor: (created_at, id) strictly greater than the last row.
+	if lastCreatedAt != 0 || lastId != 0 {
+		tx = tx.Where("logs.created_at > ? OR (logs.created_at = ? AND logs.id > ?)", lastCreatedAt, lastCreatedAt, lastId)
+	}
+	var logs []*Log
+	err := tx.Order("logs.created_at asc, logs.id asc").Limit(limit).Find(&logs).Error
+	if err != nil {
+		return nil, err
+	}
+	return logs, nil
+}
+
 const logSearchCountLimit = 10000
 
 func GetUserLogs(userId int, logType int, startTimestamp int64, endTimestamp int64, modelName string, tokenName string, startIdx int, num int, group string, requestId string, upstreamRequestId string) (logs []*Log, total int64, err error) {
