@@ -5093,7 +5093,7 @@
     "Zoom": "縮放",
     "Billing Export": "Billing Export",
     "Export Conditions": "Export Conditions",
-    "Both successful and failed requests are included. The file is exported as CSV.": "Both successful and failed requests are included. The file is exported as CSV.",
+    "Records are summarized by day, user, token and model. Both successful and failed requests are included. The file is exported as CSV.": "記錄按天、使用者、權杖、模型彙總。成功與失敗的請求都會包含在內，檔案以 CSV 格式匯出。",
     "Customer Usernames": "Customer Usernames",
     "Enter usernames, separated by comma or newline": "Enter usernames, separated by comma or newline",
     "Export CSV": "Export CSV",

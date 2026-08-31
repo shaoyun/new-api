@@ -16,9 +16,8 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { useEffect, useState } from 'react'
-
 import { Download, Loader2 } from 'lucide-react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
@@ -151,7 +150,7 @@ function BillingExportContent() {
           <CardTitle>{t('Export Conditions')}</CardTitle>
           <CardDescription>
             {t(
-              'Both successful and failed requests are included. The file is exported as CSV.'
+              'Records are summarized by day, user, token and model. Both successful and failed requests are included. The file is exported as CSV.'
             )}
           </CardDescription>
         </CardHeader>
@@ -180,9 +179,7 @@ function BillingExportContent() {
           </div>
 
           <div className='flex flex-col gap-2'>
-            <Label htmlFor='billing-export-usernames'>
-              {t('Customers')}
-            </Label>
+            <Label htmlFor='billing-export-usernames'>{t('Customers')}</Label>
             <MultiSelect
               id='billing-export-usernames'
               options={customerOptions}
@@ -190,6 +187,8 @@ function BillingExportContent() {
               onChange={setSelectedUsernames}
               disabled={isLoadingCustomers}
               maxVisibleChips={12}
+              showBulkActions
+              showClear
               placeholder={
                 isLoadingCustomers
                   ? t('Loading customers...')

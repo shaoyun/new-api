@@ -360,6 +360,12 @@ function useComboboxAnchor() {
   return React.useRef<HTMLDivElement | null>(null)
 }
 
+/**
+ * Returns the items Base UI is currently showing, i.e. after the search query
+ * has been applied. Only valid inside a `<Combobox>` subtree.
+ */
+const useComboboxFilteredItems = ComboboxPrimitive.useFilteredItems
+
 export {
   Combobox,
   ComboboxInput,
@@ -377,4 +383,5 @@ export {
   ComboboxTrigger,
   ComboboxValue,
   useComboboxAnchor,
+  useComboboxFilteredItems,
 }

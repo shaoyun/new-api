@@ -16,12 +16,13 @@ along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
 For commercial licensing, please contact support@quantumnous.com
 */
-import { Add01Icon } from '@hugeicons/core-free-icons'
+import { Add01Icon, Cancel01Icon } from '@hugeicons/core-free-icons'
 import { HugeiconsIcon } from '@hugeicons/react'
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 import { toast } from 'sonner'
 
+import { Button } from '@/components/ui/button'
 import {
   Combobox,
   ComboboxChip,
@@ -32,8 +33,10 @@ import {
   ComboboxEmpty,
   ComboboxItem,
   ComboboxList,
+  ComboboxSeparator,
   ComboboxValue,
   useComboboxAnchor,
+  useComboboxFilteredItems,
 } from '@/components/ui/combobox'
 import { copyToClipboard } from '@/lib/copy-to-clipboard'
 import { cn } from '@/lib/utils'
@@ -77,6 +80,17 @@ interface MultiSelectProps {
    * instead of being inert. The remove (×) button keeps its own behaviour.
    */
   copyChipOnClick?: boolean
+  /**
+   * Adds "select all / clear all" actions at the top of the dropdown. "Select
+   * all" applies to the options currently matching the search query, so it
+   * composes with filtering instead of always selecting the whole list.
+   */
+  showBulkActions?: boolean
+  /**
+   * Renders a clear (×) button inside the input row once anything is selected,
+   * so large selections can be reset without removing chips one by one.
+   */
+  showClear?: boolean
 }
 
 const COMMA_REGEX = /[,，\n]/
@@ -93,6 +107,60 @@ function splitDraft(value: string): { completed: string[]; draft: string } {
     .map((part) => part.trim())
     .filter(Boolean)
   return { completed, draft }
+}
+
+/**
+ * Bulk select/clear row rendered at the top of the dropdown.
+ *
+ * Lives inside `<Combobox>` because `useComboboxFilteredItems` reads the items
+ * Base UI is currently showing — "select all" therefore respects the active
+ * search query instead of always grabbing the entire option list.
+ */
+function MultiSelectBulkActions(props: {
+  selected: string[]
+  onChange: (values: string[]) => void
+}) {
+  const { t } = useTranslation()
+  const visibleItems = useComboboxFilteredItems<string>()
+
+  const unselectedVisible = visibleItems.filter(
+    (item) => !props.selected.includes(item)
+  )
+
+  const handleSelectAll = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault()
+    props.onChange([...props.selected, ...unselectedVisible])
+  }
+
+  const handleClearAll = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault()
+    props.onChange([])
+  }
+
+  return (
+    <div className='flex items-center justify-between gap-2 px-1.5 py-1'>
+      <Button
+        type='button'
+        variant='ghost'
+        size='xs'
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={handleSelectAll}
+        disabled={unselectedVisible.length === 0}
+      >
+        {t('Select all')}
+      </Button>
+      <Button
+        type='button'
+        variant='ghost'
+        size='xs'
+        onMouseDown={(event) => event.preventDefault()}
+        onClick={handleClearAll}
+        disabled={props.selected.length === 0}
+      >
+        {t('Clear all')}
+      </Button>
+    </div>
+  )
 }
 
 /**
@@ -349,9 +417,42 @@ export function MultiSelect(props: MultiSelectProps) {
           onKeyDown={handleKeyDown}
           aria-label={placeholder}
         />
+        {props.showClear && props.selected.length > 0 && (
+          <Button
+            type='button'
+            variant='ghost'
+            size='icon-xs'
+            onMouseDown={(event) => event.preventDefault()}
+            onClick={(event) => {
+              event.preventDefault()
+              event.stopPropagation()
+              props.onChange([])
+              setInputValue('')
+            }}
+            onPointerDown={(event) => event.stopPropagation()}
+            title={t('Clear all')}
+            aria-label={t('Clear all')}
+            className='ml-auto opacity-50 hover:opacity-100'
+          >
+            <HugeiconsIcon
+              icon={Cancel01Icon}
+              strokeWidth={2}
+              className='pointer-events-none'
+            />
+          </Button>
+        )}
       </ComboboxChips>
 
       <ComboboxContent anchor={chipsAnchorRef}>
+        {props.showBulkActions && (
+          <>
+            <MultiSelectBulkActions
+              selected={props.selected}
+              onChange={props.onChange}
+            />
+            <ComboboxSeparator className='mx-0 my-0' />
+          </>
+        )}
         <ComboboxList>
           <ComboboxCollection>
             {(item: string) => {
