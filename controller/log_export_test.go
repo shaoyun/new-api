@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"math"
 	"testing"
 	"time"
 
@@ -87,7 +88,7 @@ func TestFoldBillingExportBatchSumsPerDayUserTokenModel(t *testing.T) {
 
 	buckets := make(map[billingExportKey]*billingExportRow)
 	foldBillingExportBatch(buckets, logs, shanghai)
-	rows := sortedBillingExportRows(buckets)
+	rows := takeCompletedDays(buckets, math.MaxInt64)
 
 	want := []billingExportRow{
 		{billingExportKey: billingExportKey{at(2026, 8, 24, 0, 0), "alice", "gpt", "gpt-5.6-luna"},
@@ -119,7 +120,7 @@ func TestFoldBillingExportBatchDayBoundaryIsShanghaiLocal(t *testing.T) {
 
 	buckets := make(map[billingExportKey]*billingExportRow)
 	foldBillingExportBatch(buckets, logs, shanghai)
-	rows := sortedBillingExportRows(buckets)
+	rows := takeCompletedDays(buckets, math.MaxInt64)
 
 	require.Len(t, rows, 2)
 	assert.Equal(t, at(2026, 8, 23, 0, 0), rows[0].DayStart)
@@ -142,11 +143,40 @@ func TestFoldBillingExportBatchAccumulatesAcrossBatches(t *testing.T) {
 	foldBillingExportBatch(buckets, entry(10), shanghai)
 	foldBillingExportBatch(buckets, entry(20), shanghai)
 
-	rows := sortedBillingExportRows(buckets)
+	rows := takeCompletedDays(buckets, math.MaxInt64)
 	require.Len(t, rows, 1)
 	assert.Equal(t, int64(30), rows[0].Quota)
 	assert.Equal(t, int64(10), rows[0].PromptTokens)
 	assert.Equal(t, int64(6), rows[0].CacheReadTokens)
+}
+
+func TestTakeCompletedDaysHoldsBackTheDayStillBeingScanned(t *testing.T) {
+	// The export writes each day out as soon as the scan crosses into the next
+	// one. A day the scan is still inside must stay in the map, or later rows
+	// for it would be emitted as a second line for the same day.
+	buckets := make(map[billingExportKey]*billingExportRow)
+	foldBillingExportBatch(buckets, []*model.Log{
+		{CreatedAt: at(2026, 8, 23, 9, 0), Username: "u", TokenName: "t", ModelName: "m", Quota: 1},
+		{CreatedAt: at(2026, 8, 24, 9, 0), Username: "u", TokenName: "t", ModelName: "m", Quota: 2},
+	}, shanghai)
+
+	// Scan has reached the 24th, so only the 23rd is final.
+	rows := takeCompletedDays(buckets, at(2026, 8, 24, 0, 0))
+	require.Len(t, rows, 1)
+	assert.Equal(t, at(2026, 8, 23, 0, 0), rows[0].DayStart)
+	assert.Equal(t, int64(1), rows[0].Quota)
+	require.Len(t, buckets, 1)
+
+	// A later batch still lands in the held-back day rather than a new line.
+	foldBillingExportBatch(buckets, []*model.Log{
+		{CreatedAt: at(2026, 8, 24, 22, 0), Username: "u", TokenName: "t", ModelName: "m", Quota: 3},
+	}, shanghai)
+
+	rows = takeCompletedDays(buckets, math.MaxInt64)
+	require.Len(t, rows, 1)
+	assert.Equal(t, at(2026, 8, 24, 0, 0), rows[0].DayStart)
+	assert.Equal(t, int64(5), rows[0].Quota)
+	assert.Empty(t, buckets)
 }
 
 func TestOtherIntFromDecodedJSON(t *testing.T) {

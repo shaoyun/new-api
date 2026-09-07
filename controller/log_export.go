@@ -3,6 +3,7 @@ package controller
 import (
 	"encoding/csv"
 	"fmt"
+	"math"
 	"net/http"
 	"sort"
 	"strconv"
@@ -107,6 +108,13 @@ func formatQuotaUSD(quota int64) string {
 	return s
 }
 
+// exportDayStart truncates a log timestamp to the start of its calendar day in
+// loc. The export buckets by local day, so this is what "a day" means here.
+func exportDayStart(ts int64, loc *time.Location) int64 {
+	t := time.Unix(ts, 0).In(loc)
+	return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, loc).Unix()
+}
+
 // foldBillingExportBatch accumulates one keyset page of logs into the daily
 // export buckets, keyed by (day in loc, username, token, model).
 //
@@ -114,9 +122,8 @@ func formatQuotaUSD(quota int64) string {
 // by the billing invariants, but a day of requests sums past that range.
 func foldBillingExportBatch(buckets map[billingExportKey]*billingExportRow, logs []*model.Log, loc *time.Location) {
 	for _, log := range logs {
-		ts := time.Unix(log.CreatedAt, 0).In(loc)
 		key := billingExportKey{
-			DayStart:  time.Date(ts.Year(), ts.Month(), ts.Day(), 0, 0, 0, 0, loc).Unix(),
+			DayStart:  exportDayStart(log.CreatedAt, loc),
 			Username:  log.Username,
 			TokenName: log.TokenName,
 			ModelName: log.ModelName,
@@ -135,13 +142,20 @@ func foldBillingExportBatch(buckets map[billingExportKey]*billingExportRow, logs
 	}
 }
 
-// sortedBillingExportRows flattens the buckets into CSV order: chronological,
-// then a stable grouping within each day so repeated exports of the same window
-// produce byte-identical files.
-func sortedBillingExportRows(buckets map[billingExportKey]*billingExportRow) []*billingExportRow {
-	rows := make([]*billingExportRow, 0, len(buckets))
-	for _, row := range buckets {
+// takeCompletedDays removes every bucket whose day starts before cutoff and
+// returns them in CSV order: chronological, then a stable grouping within each
+// day so repeated exports of the same window produce byte-identical files.
+//
+// Logs are scanned in created_at order, so once the scan has reached cutoff
+// those earlier days can no longer receive rows and are final.
+func takeCompletedDays(buckets map[billingExportKey]*billingExportRow, cutoff int64) []*billingExportRow {
+	var rows []*billingExportRow
+	for key, row := range buckets {
+		if key.DayStart >= cutoff {
+			continue
+		}
 		rows = append(rows, row)
+		delete(buckets, key)
 	}
 	sort.Slice(rows, func(i, j int) bool {
 		a, b := rows[i], rows[j]
@@ -159,6 +173,27 @@ func sortedBillingExportRows(buckets map[billingExportKey]*billingExportRow) []*
 	return rows
 }
 
+// writeBillingExportRows renders finished daily buckets as CSV records.
+func writeBillingExportRows(writer *csv.Writer, rows []*billingExportRow, loc *time.Location) error {
+	for _, row := range rows {
+		record := []string{
+			time.Unix(row.DayStart, 0).In(loc).Format("2006/1/2"),
+			row.Username,
+			row.TokenName,
+			row.ModelName,
+			strconv.FormatInt(row.PromptTokens, 10),
+			strconv.FormatInt(row.CompletionTokens, 10),
+			strconv.FormatInt(row.CacheReadTokens, 10),
+			strconv.FormatInt(row.CacheWriteTokens, 10),
+			formatQuotaUSD(row.Quota),
+		}
+		if err := writer.Write(record); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 // ExportLogs serves an admin billing export as a CSV attachment. It requires a
 // time window and a non-empty comma-separated username list, and includes both
 // successful (type 2) and error (type 5) rows.
@@ -167,9 +202,16 @@ func sortedBillingExportRows(buckets map[billingExportKey]*billingExportRow) []*
 // bucket and the cache-token columns both rule out doing this in SQL: the day
 // boundary must land in Asia/Shanghai (no portable date-truncation across
 // SQLite/MySQL/PostgreSQL/ClickHouse) and the cache counters live inside the
-// `other` JSON text column. So logs are still scanned with keyset pagination,
-// but each batch is folded into the bucket map instead of being written out —
-// only the aggregate is held in memory, and the CSV is written once at the end.
+// `other` JSON text column. So logs are scanned with keyset pagination and each
+// batch is folded into the bucket map instead of being written out.
+//
+// The scan runs in created_at order, so crossing into a new day finalises every
+// earlier day: those buckets are written and dropped right away. That keeps the
+// response streaming — an all-customer month can scan for minutes, and a
+// response that sends nothing meanwhile gets cut by the load balancer's idle
+// timeout — and holds only the current day's buckets in memory. This route is
+// excluded from the gzip middleware in router/api-router.go, which would
+// otherwise buffer these flushes away.
 func ExportLogs(c *gin.Context) {
 	startTimestamp, _ := strconv.ParseInt(c.Query("start_timestamp"), 10, 64)
 	endTimestamp, _ := strconv.ParseInt(c.Query("end_timestamp"), 10, 64)
@@ -196,56 +238,67 @@ func ExportLogs(c *gin.Context) {
 	buckets := make(map[billingExportKey]*billingExportRow)
 	var lastCreatedAt int64
 	var lastId int
+	var writer *csv.Writer
+
 	for {
-		logs, err := model.GetLogsForExport(startTimestamp, endTimestamp, usernames, lastCreatedAt, lastId, exportBatchSize)
-		if err != nil {
-			// Nothing has been written yet, so this can still fail cleanly.
-			common.SysError("billing export query failed: " + err.Error())
-			common.ApiErrorMsg(c, "导出失败，请稍后重试")
+		if c.Request.Context().Err() != nil {
+			// Client gave up. Stop scanning instead of running the rest of the
+			// window for nobody while holding a log-database connection.
 			return
 		}
-		if len(logs) == 0 {
-			break
+
+		logs, err := model.GetLogsForExport(startTimestamp, endTimestamp, usernames, lastCreatedAt, lastId, exportBatchSize)
+		if err != nil {
+			common.SysError("billing export query failed: " + err.Error())
+			if writer == nil {
+				// Nothing written yet, so this can still fail as clean JSON.
+				common.ApiErrorMsg(c, "导出失败，请稍后重试")
+			}
+			return
 		}
-		foldBillingExportBatch(buckets, logs, loc)
-		last := logs[len(logs)-1]
-		lastCreatedAt, lastId = last.CreatedAt, last.Id
+
+		if writer == nil {
+			filename := fmt.Sprintf("billing_export_%d_%d.csv", startTimestamp, endTimestamp)
+			c.Header("Content-Type", "text/csv; charset=utf-8")
+			c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
+			c.Status(http.StatusOK)
+			// UTF-8 BOM so Excel opens Chinese headers/values without mojibake.
+			if _, err := c.Writer.Write([]byte{0xEF, 0xBB, 0xBF}); err != nil {
+				return
+			}
+			writer = csv.NewWriter(c.Writer)
+			if err := writer.Write(billingExportHeader); err != nil {
+				return
+			}
+		}
+
+		if len(logs) > 0 {
+			foldBillingExportBatch(buckets, logs, loc)
+			last := logs[len(logs)-1]
+			lastCreatedAt, lastId = last.CreatedAt, last.Id
+			done := takeCompletedDays(buckets, exportDayStart(last.CreatedAt, loc))
+			if err := writeBillingExportRows(writer, done, loc); err != nil {
+				return
+			}
+		}
+
+		// Flush every batch so bytes keep reaching the client during a long
+		// scan, and so a disconnect surfaces as a write error below.
+		writer.Flush()
+		c.Writer.Flush()
+		if err := writer.Error(); err != nil {
+			common.SysError("billing export write failed: " + err.Error())
+			return
+		}
+
 		if len(logs) < exportBatchSize {
 			break
 		}
 	}
 
-	rows := sortedBillingExportRows(buckets)
-
-	filename := fmt.Sprintf("billing_export_%d_%d.csv", startTimestamp, endTimestamp)
-	c.Header("Content-Type", "text/csv; charset=utf-8")
-	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", filename))
-	c.Status(http.StatusOK)
-
-	// UTF-8 BOM so Excel opens Chinese headers/values without mojibake.
-	if _, err := c.Writer.Write([]byte{0xEF, 0xBB, 0xBF}); err != nil {
+	// Whatever is left is the final day, which nothing can add to now.
+	if err := writeBillingExportRows(writer, takeCompletedDays(buckets, math.MaxInt64), loc); err != nil {
 		return
-	}
-
-	writer := csv.NewWriter(c.Writer)
-	if err := writer.Write(billingExportHeader); err != nil {
-		return
-	}
-	for _, row := range rows {
-		record := []string{
-			time.Unix(row.DayStart, 0).In(loc).Format("2006/1/2"),
-			row.Username,
-			row.TokenName,
-			row.ModelName,
-			strconv.FormatInt(row.PromptTokens, 10),
-			strconv.FormatInt(row.CompletionTokens, 10),
-			strconv.FormatInt(row.CacheReadTokens, 10),
-			strconv.FormatInt(row.CacheWriteTokens, 10),
-			formatQuotaUSD(row.Quota),
-		}
-		if err := writer.Write(record); err != nil {
-			return
-		}
 	}
 	writer.Flush()
 	if err := writer.Error(); err != nil {

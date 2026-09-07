@@ -14,7 +14,11 @@ import (
 func SetApiRouter(router *gin.Engine) {
 	apiRouter := router.Group("/api")
 	apiRouter.Use(middleware.RouteTag("api"))
-	apiRouter.Use(gzip.Gzip(gzip.DefaultCompression))
+	// The billing export streams CSV while it scans, flushing between batches so
+	// the connection never sits idle long enough for the load balancer to cut it.
+	// gzip's writer buffers those flushes away (it wraps Write but not Flush), so
+	// that one route is excluded.
+	apiRouter.Use(gzip.Gzip(gzip.DefaultCompression, gzip.WithExcludedPaths([]string{"/api/log/export"})))
 	apiRouter.Use(middleware.BodyStorageCleanup()) // 清理请求体存储
 	apiRouter.Use(middleware.GlobalAPIRateLimit())
 	anonymousRequestBodyLimit := middleware.AnonymousRequestBodyLimit()
