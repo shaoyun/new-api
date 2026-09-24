@@ -205,6 +205,7 @@ export const channelFormSchema = z
     allow_speed: z.boolean().optional(), // Anthropic: speed mode control
     allow_output_config_format: z.boolean().optional(), // AWS Bedrock: output_config.format passthrough
     allow_context_management: z.boolean().optional(), // Anthropic/AWS Bedrock: allow context_management passthrough (filtered by default because proxied Bedrock rejects it)
+    normalize_system_array_to_string: z.boolean().optional(), // Anthropic: merge system content-block array into a plain string (some Anthropic-compatible upstreams, e.g. Cloudflare AI Gateway's native endpoint, reject an array)
     claude_beta_query: z.boolean().optional(), // Anthropic: beta query passthrough
     disable_task_polling_sleep: z.boolean().optional(),
     // Upstream model update settings (stored in settings JSON)
@@ -347,6 +348,7 @@ export const CHANNEL_FORM_DEFAULT_VALUES: ChannelFormValues = {
   allow_speed: false,
   allow_output_config_format: false,
   allow_context_management: false,
+  normalize_system_array_to_string: false,
   claude_beta_query: false,
   disable_task_polling_sleep: false,
   upstream_model_update_check_enabled: false,
@@ -405,6 +407,7 @@ export function transformChannelToFormDefaults(
   let allowSpeed = false
   let allowOutputConfigFormat = false
   let allowContextManagement = false
+  let normalizeSystemArrayToString = false
   let claudeBetaQuery = false
   let disableTaskPollingSleep = false
   let upstreamModelUpdateCheckEnabled = false
@@ -427,6 +430,7 @@ export function transformChannelToFormDefaults(
       allowSpeed = parsed.allow_speed === true
       allowOutputConfigFormat = parsed.allow_output_config_format === true
       allowContextManagement = parsed.allow_context_management === true
+      normalizeSystemArrayToString = parsed.normalize_system_array_to_string === true
       claudeBetaQuery = parsed.claude_beta_query === true
       disableTaskPollingSleep = parsed.disable_task_polling_sleep === true
       upstreamModelUpdateCheckEnabled =
@@ -487,6 +491,7 @@ export function transformChannelToFormDefaults(
     allow_speed: allowSpeed,
     allow_output_config_format: allowOutputConfigFormat,
     allow_context_management: allowContextManagement,
+    normalize_system_array_to_string: normalizeSystemArrayToString,
     claude_beta_query: claudeBetaQuery,
     disable_task_polling_sleep: disableTaskPollingSleep,
     allow_safety_identifier: allowSafetyIdentifier,
@@ -596,9 +601,13 @@ function buildSettingsJSON(formData: ChannelFormValues): string {
     settingsObj.allow_inference_geo = formData.allow_inference_geo === true
     settingsObj.allow_speed = formData.allow_speed === true
     settingsObj.claude_beta_query = formData.claude_beta_query === true
+    settingsObj.normalize_system_array_to_string =
+      formData.normalize_system_array_to_string === true
   } else {
     if ('allow_speed' in settingsObj) delete settingsObj.allow_speed
     if ('claude_beta_query' in settingsObj) delete settingsObj.claude_beta_query
+    if ('normalize_system_array_to_string' in settingsObj)
+      delete settingsObj.normalize_system_array_to_string
   }
 
   // Anthropic (type 14) and AWS Bedrock (type 33): allow_context_management

@@ -90,3 +90,35 @@ func TestRemoveDisabledFieldsOutputConfigFormat(t *testing.T) {
 		require.Equal(t, "json_schema", gjson.GetBytes(out, "output_config.format.type").String())
 	})
 }
+
+func TestRemoveDisabledFieldsNormalizeSystemArrayToString(t *testing.T) {
+	const body = `{"model":"claude-opus-4-8","system":[{"type":"text","text":"You are helpful. "},{"type":"text","text":"Be concise.","cache_control":{"type":"ephemeral"}}],"max_tokens":1024}`
+
+	t.Run("left as array by default", func(t *testing.T) {
+		out, err := RemoveDisabledFields([]byte(body), dto.ChannelOtherSettings{}, false)
+		require.NoError(t, err)
+		require.True(t, gjson.GetBytes(out, "system").IsArray())
+	})
+
+	t.Run("merged into a string when enabled", func(t *testing.T) {
+		out, err := RemoveDisabledFields([]byte(body), dto.ChannelOtherSettings{NormalizeSystemArrayToString: true}, false)
+		require.NoError(t, err)
+		system := gjson.GetBytes(out, "system")
+		require.Equal(t, gjson.String, system.Type)
+		require.Equal(t, "You are helpful. Be concise.", system.String())
+		require.Equal(t, "claude-opus-4-8", gjson.GetBytes(out, "model").String())
+	})
+
+	t.Run("string system left untouched when enabled", func(t *testing.T) {
+		const stringBody = `{"system":"You are helpful.","max_tokens":1024}`
+		out, err := RemoveDisabledFields([]byte(stringBody), dto.ChannelOtherSettings{NormalizeSystemArrayToString: true}, false)
+		require.NoError(t, err)
+		require.Equal(t, "You are helpful.", gjson.GetBytes(out, "system").String())
+	})
+
+	t.Run("preserved when channel passthrough enabled", func(t *testing.T) {
+		out, err := RemoveDisabledFields([]byte(body), dto.ChannelOtherSettings{NormalizeSystemArrayToString: true}, true)
+		require.NoError(t, err)
+		require.True(t, gjson.GetBytes(out, "system").IsArray())
+	})
+}

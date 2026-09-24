@@ -288,6 +288,7 @@ const SENSITIVE_FORM_FIELDS = [
   'allow_speed',
   'allow_output_config_format',
   'allow_context_management',
+  'normalize_system_array_to_string',
   'claude_beta_query',
   'disable_task_polling_sleep',
   'upstream_model_update_check_enabled',
@@ -4410,6 +4411,31 @@ export function ChannelMutateDrawer({
                                             <FormDescription>
                                               {t(
                                                 'Pass through the anthropic-beta header for beta features'
+                                              )}
+                                            </FormDescription>
+                                          </div>
+                                          <FormControl>
+                                            <Switch
+                                              checked={field.value}
+                                              onCheckedChange={field.onChange}
+                                            />
+                                          </FormControl>
+                                        </FormItem>
+                                      )}
+                                    />
+
+                                    <FormField
+                                      control={form.control}
+                                      name='normalize_system_array_to_string'
+                                      render={({ field }) => (
+                                        <FormItem className='flex items-center justify-between gap-3 px-4 py-3'>
+                                          <div className='space-y-0.5'>
+                                            <FormLabel className='text-sm'>
+                                              {t('Merge system array into a string')}
+                                            </FormLabel>
+                                            <FormDescription>
+                                              {t(
+                                                'Some Anthropic-compatible upstreams (e.g. Cloudflare AI Gateway native endpoint) reject an array system field; enabling this merges text blocks into a plain string, losing per-block cache_control'
                                               )}
                                             </FormDescription>
                                           </div>

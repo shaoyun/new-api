@@ -33,16 +33,17 @@ type ChannelOtherSettings struct {
 	AzureResponsesVersion                 string                `json:"azure_responses_version,omitempty"`
 	VertexKeyType                         VertexKeyType         `json:"vertex_key_type,omitempty"` // "json" or "api_key"
 	OpenRouterEnterprise                  *bool                 `json:"openrouter_enterprise,omitempty"`
-	ClaudeBetaQuery                       bool                  `json:"claude_beta_query,omitempty"`          // Claude 渠道是否强制追加 ?beta=true
-	AllowServiceTier                      bool                  `json:"allow_service_tier,omitempty"`         // 是否允许 service_tier 透传（默认过滤以避免额外计费）
-	AllowInferenceGeo                     bool                  `json:"allow_inference_geo,omitempty"`        // 是否允许 inference_geo 透传（仅 Claude，默认过滤以满足数据驻留合规
-	AllowSpeed                            bool                  `json:"allow_speed,omitempty"`                // 是否允许 speed 透传（仅 Claude，默认过滤以避免意外切换推理速度模式）
-	AllowOutputConfigFormat               bool                  `json:"allow_output_config_format,omitempty"` // 是否允许 output_config.format 透传（仅 AWS Bedrock，默认过滤以避免不支持结构化输出的模型返回 400）
-	AllowContextManagement                bool                  `json:"allow_context_management,omitempty"`   // 是否允许 context_management 透传（默认过滤，因为经代理接入的 Bedrock 等上游会因该字段返回 400，例如 "invalid beta flag"；仅在确认上游原生支持时开启）
-	AllowSafetyIdentifier                 bool                  `json:"allow_safety_identifier,omitempty"`    // 是否允许 safety_identifier 透传（默认过滤以保护用户隐私）
-	DisableStore                          bool                  `json:"disable_store,omitempty"`              // 是否禁用 store 透传（默认允许透传，禁用后可能导致 Codex 无法使用）
-	AllowIncludeObfuscation               bool                  `json:"allow_include_obfuscation,omitempty"`  // 是否允许 stream_options.include_obfuscation 透传（默认过滤以避免关闭流混淆保护）
-	DisableTaskPollingSleep               bool                  `json:"disable_task_polling_sleep,omitempty"` // 是否跳过异步任务轮询间隔
+	ClaudeBetaQuery                       bool                  `json:"claude_beta_query,omitempty"`                // Claude 渠道是否强制追加 ?beta=true
+	AllowServiceTier                      bool                  `json:"allow_service_tier,omitempty"`               // 是否允许 service_tier 透传（默认过滤以避免额外计费）
+	AllowInferenceGeo                     bool                  `json:"allow_inference_geo,omitempty"`              // 是否允许 inference_geo 透传（仅 Claude，默认过滤以满足数据驻留合规
+	AllowSpeed                            bool                  `json:"allow_speed,omitempty"`                      // 是否允许 speed 透传（仅 Claude，默认过滤以避免意外切换推理速度模式）
+	AllowOutputConfigFormat               bool                  `json:"allow_output_config_format,omitempty"`       // 是否允许 output_config.format 透传（仅 AWS Bedrock，默认过滤以避免不支持结构化输出的模型返回 400）
+	AllowContextManagement                bool                  `json:"allow_context_management,omitempty"`         // 是否允许 context_management 透传（默认过滤，因为经代理接入的 Bedrock 等上游会因该字段返回 400，例如 "invalid beta flag"；仅在确认上游原生支持时开启）
+	AllowSafetyIdentifier                 bool                  `json:"allow_safety_identifier,omitempty"`          // 是否允许 safety_identifier 透传（默认过滤以保护用户隐私）
+	DisableStore                          bool                  `json:"disable_store,omitempty"`                    // 是否禁用 store 透传（默认允许透传，禁用后可能导致 Codex 无法使用）
+	AllowIncludeObfuscation               bool                  `json:"allow_include_obfuscation,omitempty"`        // 是否允许 stream_options.include_obfuscation 透传（默认过滤以避免关闭流混淆保护）
+	NormalizeSystemArrayToString          bool                  `json:"normalize_system_array_to_string,omitempty"` // 是否将 system 由内容块数组合并为纯字符串（仅 Claude，默认关闭；部分严格校验的 Anthropic 兼容上游，如 Cloudflare AI Gateway 的原生 /ai/v1/messages 端点，会返回 400 "Invalid input: expected string, received array"；开启后按顺序拼接文本块，会丢失各块的 cache_control 断点）
+	DisableTaskPollingSleep               bool                  `json:"disable_task_polling_sleep,omitempty"`       // 是否跳过异步任务轮询间隔
 	AwsKeyType                            AwsKeyType            `json:"aws_key_type,omitempty"`
 	UpstreamModelUpdateCheckEnabled       bool                  `json:"upstream_model_update_check_enabled,omitempty"`        // 是否检测上游模型更新
 	UpstreamModelUpdateAutoSyncEnabled    bool                  `json:"upstream_model_update_auto_sync_enabled,omitempty"`    // 是否自动同步上游模型更新

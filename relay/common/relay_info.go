@@ -883,6 +883,26 @@ func RemoveDisabledFields(jsonData []byte, channelOtherSettings dto.ChannelOther
 		}
 	}
 
+	// 按需将 system 由内容块数组合并为纯字符串（部分严格校验的 Anthropic 兼容上游，如 Cloudflare AI Gateway 的原生端点，拒绝 system 为数组）
+	if channelOtherSettings.NormalizeSystemArrayToString {
+		if systemBlocks, ok := data["system"].([]interface{}); ok {
+			var sb strings.Builder
+			for _, blockAny := range systemBlocks {
+				block, ok := blockAny.(map[string]interface{})
+				if !ok {
+					continue
+				}
+				if blockType, _ := block["type"].(string); blockType != "" && blockType != "text" {
+					continue
+				}
+				if text, ok := block["text"].(string); ok {
+					sb.WriteString(text)
+				}
+			}
+			data["system"] = sb.String()
+		}
+	}
+
 	jsonDataAfter, err := common.Marshal(data)
 	if err != nil {
 		common.SysError("RemoveDisabledFields Marshal error :" + err.Error())
@@ -902,6 +922,7 @@ func hasRemovableDisabledField(jsonData []byte, channelOtherSettings dto.Channel
 		"stream_options.include_obfuscation",
 		"context_management",
 		"output_config.format",
+		"system",
 	)
 
 	return (!channelOtherSettings.AllowServiceTier && values[0].Exists()) ||
@@ -911,7 +932,8 @@ func hasRemovableDisabledField(jsonData []byte, channelOtherSettings dto.Channel
 		(!channelOtherSettings.AllowSafetyIdentifier && values[4].Exists()) ||
 		(!channelOtherSettings.AllowIncludeObfuscation && values[5].Exists()) ||
 		(!channelOtherSettings.AllowContextManagement && values[6].Exists()) ||
-		(!channelOtherSettings.AllowOutputConfigFormat && values[7].Exists())
+		(!channelOtherSettings.AllowOutputConfigFormat && values[7].Exists()) ||
+		(channelOtherSettings.NormalizeSystemArrayToString && values[8].IsArray())
 }
 
 // RemoveGeminiDisabledFields removes disabled fields from Gemini request JSON data
