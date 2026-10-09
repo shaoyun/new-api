@@ -21,6 +21,14 @@ const WAN_MODELS = {
   "wanx2.1-t2v-turbo": { kind: "size", resolutions: ["480P", "720P"], defaultResolution: "720P", durations: [5] },
   "wanx2.1-i2v-plus": { kind: "image", resolutions: ["720P"], defaultResolution: "720P", durations: [5] },
   "wanx2.1-i2v-turbo": { kind: "image", resolutions: ["480P", "720P"], defaultResolution: "720P", durations: [3, 4, 5] },
+  // HappyHorse shares the Wan async video API. hh_t2v: prompt only; hh_i2v:
+  // exactly one first_frame; hh_r2v: 1-9 reference_image. 1.0 has no 480P.
+  "happyhorse-1.1-t2v": { kind: "hh_t2v", resolutions: ["480P", "720P", "1080P"], defaultResolution: "1080P", minDuration: 3, maxDuration: 15 },
+  "happyhorse-1.1-i2v": { kind: "hh_i2v", resolutions: ["480P", "720P", "1080P"], defaultResolution: "1080P", minDuration: 3, maxDuration: 15 },
+  "happyhorse-1.1-r2v": { kind: "hh_r2v", resolutions: ["480P", "720P", "1080P"], defaultResolution: "1080P", minDuration: 3, maxDuration: 15 },
+  "happyhorse-1.0-t2v": { kind: "hh_t2v", resolutions: ["720P", "1080P"], defaultResolution: "1080P", minDuration: 3, maxDuration: 15 },
+  "happyhorse-1.0-i2v": { kind: "hh_i2v", resolutions: ["720P", "1080P"], defaultResolution: "1080P", minDuration: 3, maxDuration: 15 },
+  "happyhorse-1.0-r2v": { kind: "hh_r2v", resolutions: ["720P", "1080P"], defaultResolution: "1080P", minDuration: 3, maxDuration: 15 },
 };
 
 // HTTP contracts (SDK synchronous calls can also wrap polling):
@@ -250,6 +258,12 @@ export const meta = {
     "wanx2.1-t2v-turbo",
     "wanx2.1-i2v-plus",
     "wanx2.1-i2v-turbo",
+    "happyhorse-1.1-t2v",
+    "happyhorse-1.1-i2v",
+    "happyhorse-1.1-r2v",
+    "happyhorse-1.0-t2v",
+    "happyhorse-1.0-i2v",
+    "happyhorse-1.0-r2v",
     "wan2.7-image-pro",
     "wan2.7-image",
     "wan2.6-image",
@@ -778,6 +792,7 @@ function convert(ctx) {
   if (image && input.img_url === undefined) input.img_url = image;
   Object.assign(input, objectValue(metadata.input, "metadata.input"));
   const nativeParameters = objectValue(metadata.parameters, "metadata.parameters");
+  if (happyHorseKind(profile.kind)) return convertHappyHorse(req, upstreamModel, profile, input, nativeParameters);
   const parameters = profile.kind === "speech" ? {} : { prompt_extend: true };
   for (const key of ["resolution", "ratio", "prompt_extend", "watermark", "audio", "seed", "shot_type"]) {
     if (req[key] !== undefined) parameters[key] = req[key];
@@ -885,6 +900,78 @@ function convert(ctx) {
   } else if (!trimmed(input.prompt)) {
     throw new Error("input is required");
   }
+  return { model: upstreamModel, input: input, parameters: parameters };
+}
+
+const HAPPYHORSE_RATIOS = ["16:9", "9:16", "1:1", "4:3", "3:4", "4:5", "5:4", "9:21", "21:9"];
+const HAPPYHORSE_MAX_REFERENCE_IMAGES = 9;
+
+function happyHorseKind(kind) {
+  return kind === "hh_t2v" || kind === "hh_i2v" || kind === "hh_r2v";
+}
+
+// HappyHorse takes resolution/ratio/duration/watermark/seed only (no
+// prompt_extend or size), with per-variant media rules.
+function convertHappyHorse(req, upstreamModel, profile, input, nativeParameters) {
+  const parameters = {};
+  for (const key of ["resolution", "ratio", "watermark", "seed"]) {
+    if (req[key] !== undefined) parameters[key] = req[key];
+  }
+  Object.assign(parameters, nativeParameters);
+  if (parameters.watermark != null && typeof parameters.watermark !== "boolean") throw new Error("watermark must be a boolean");
+  if (parameters.seed != null && (!Number.isInteger(parameters.seed) || parameters.seed < 0 || parameters.seed > 2147483647))
+    throw new Error("seed must be an integer between 0 and 2147483647");
+
+  const sizeValue = nativeParameters.size ?? req.size;
+  const size = sizeValue == null || sizeValue === "" ? {} : videoSize(sizeValue);
+  const resolution = normalizeResolution(parameters.resolution ?? size.resolution ?? profile.defaultResolution);
+  if (!profile.resolutions.includes(resolution)) throw new Error(upstreamModel + " resolution must be one of " + profile.resolutions.join(", "));
+  parameters.resolution = resolution;
+  delete parameters.size;
+  if (profile.kind === "hh_i2v") {
+    delete parameters.ratio; // Output follows the first frame's aspect ratio.
+  } else {
+    const ratio = parameters.ratio ?? size.ratio ?? "16:9";
+    if (!HAPPYHORSE_RATIOS.includes(ratio)) throw new Error(upstreamModel + " ratio must be one of " + HAPPYHORSE_RATIOS.join(", "));
+    parameters.ratio = ratio;
+  }
+
+  const rawDuration = nativeParameters.duration ?? req.duration ?? req.seconds;
+  if (rawDuration != null && ((typeof rawDuration !== "number" && typeof rawDuration !== "string") || String(rawDuration).trim() === ""))
+    throw new Error("duration must be a number");
+  const duration = rawDuration == null ? 5 : Number(rawDuration);
+  if (!Number.isInteger(duration) || duration < profile.minDuration || duration > profile.maxDuration)
+    throw new Error(upstreamModel + " duration must be an integer between " + profile.minDuration + " and " + profile.maxDuration);
+  parameters.duration = duration;
+
+  if (input.media !== undefined && !Array.isArray(input.media)) throw new Error("input.media must be an array");
+  if (profile.kind === "hh_t2v") {
+    if (input.media && input.media.length) throw new Error(upstreamModel + " does not accept input.media");
+    delete input.media;
+  } else if (profile.kind === "hh_i2v") {
+    if (!input.media || !input.media.length) {
+      const first = trimmed(input.first_frame_url) || trimmed(input.img_url) || firstImage(req);
+      input.media = first ? [{ type: "first_frame", url: first }] : [];
+    }
+    if (input.media.length !== 1 || !input.media[0] || input.media[0].type !== "first_frame" || !trimmed(input.media[0].url))
+      throw new Error(upstreamModel + " requires exactly one first_frame image");
+  } else {
+    if (!input.media || !input.media.length) {
+      const images = [];
+      for (const image of req.images || []) if (trimmed(image)) images.push(trimmed(image));
+      if (!images.length && firstImage(req)) images.push(firstImage(req));
+      input.media = images.map(function (url) {
+        return { type: "reference_image", url: url };
+      });
+    }
+    if (!input.media.length || input.media.length > HAPPYHORSE_MAX_REFERENCE_IMAGES)
+      throw new Error(upstreamModel + " requires 1 to " + HAPPYHORSE_MAX_REFERENCE_IMAGES + " reference_image entries");
+    for (const media of input.media) {
+      if (!media || media.type !== "reference_image" || !trimmed(media.url)) throw new Error(upstreamModel + " input.media only accepts reference_image with a url");
+    }
+  }
+  if (!trimmed(input.prompt)) throw new Error(upstreamModel + " requires prompt");
+  for (const key of ["img_url", "image_url", "first_frame_url", "last_frame_url", "audio_url", "negative_prompt", "template"]) delete input[key];
   return { model: upstreamModel, input: input, parameters: parameters };
 }
 
@@ -1324,7 +1411,7 @@ export const protocols = {
       const action = videoAction(requestBody);
       const profile = WAN_MODELS[modelKey(ctx.upstreamModel || model)];
       const nativeInput = objectValue((requestBody.metadata || {}).input, "metadata.input");
-      if (!trimmed(nativeInput.prompt ?? prompt) && (action === "text_to_video" || (profile && (profile.kind === "size" || profile.kind === "t2v"))))
+      if (!trimmed(nativeInput.prompt ?? prompt) && (action === "text_to_video" || (profile && (profile.kind === "size" || profile.kind === "t2v" || happyHorseKind(profile.kind)))))
         throw new Error("input is required");
       return { kind: "submit", model: model, action: action, requestBody: requestBody };
     },
