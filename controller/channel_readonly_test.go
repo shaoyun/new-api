@@ -19,11 +19,15 @@ import (
 
 func newChannelWithSecrets() *model.Channel {
 	settingJSON := `{"proxy":"http://user:pass@127.0.0.1:8080","force_format":true}`
+	headerOverride := `{"Authorization":"Bearer sk-upstream-literal"}`
+	paramOverride := `{"api_key":"sk-param-literal"}`
 	ch := &model.Channel{
-		Id:      1,
-		Name:    "secret-channel",
-		Key:     "sk-super-secret",
-		Setting: &settingJSON,
+		Id:             1,
+		Name:           "secret-channel",
+		Key:            "sk-super-secret",
+		Setting:        &settingJSON,
+		HeaderOverride: &headerOverride,
+		ParamOverride:  &paramOverride,
 	}
 	return ch
 }
@@ -39,6 +43,8 @@ func TestSanitizeChannelForRole_CommonUserStripsKeyAndProxy(t *testing.T) {
 	require.Equal(t, "", ch.Key, "common user must not see key")
 	require.Equal(t, "", ch.GetSetting().Proxy, "common user must not see proxy")
 	require.True(t, ch.GetSetting().ForceFormat, "non-secret setting fields must be preserved")
+	require.Nil(t, ch.HeaderOverride, "common user must not see header_override (may hold upstream credentials)")
+	require.Nil(t, ch.ParamOverride, "common user must not see param_override (may hold upstream credentials)")
 }
 
 func TestSanitizeChannelForRole_AdminKeepsEverything(t *testing.T) {
@@ -51,6 +57,8 @@ func TestSanitizeChannelForRole_AdminKeepsEverything(t *testing.T) {
 
 	require.Equal(t, "sk-super-secret", ch.Key, "admin must keep key")
 	require.Equal(t, "http://user:pass@127.0.0.1:8080", ch.GetSetting().Proxy, "admin must keep proxy")
+	require.NotNil(t, ch.HeaderOverride, "admin must keep header_override")
+	require.NotNil(t, ch.ParamOverride, "admin must keep param_override")
 }
 
 func TestSanitizeChannelForRole_RootKeepsEverything(t *testing.T) {
