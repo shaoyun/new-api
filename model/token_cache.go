@@ -9,12 +9,16 @@ import (
 	"github.com/QuantumNous/new-api/common"
 )
 
+// Keys touched together by one Lua script or MGET must share a hash tag ({...})
+// so Redis Cluster / ElastiCache Serverless maps them to the same slot;
+// otherwise the command fails with CROSSSLOT. On standalone Redis the braces
+// are ordinary characters.
 func getTokenCacheKey(key string) string {
-	return fmt.Sprintf("token:%s", common.GenerateHMAC(key))
+	return fmt.Sprintf("token:{%s}", common.GenerateHMAC(key))
 }
 
 func getTokenCacheFenceKey(key string) string {
-	return fmt.Sprintf("token:fence:%s", common.GenerateHMAC(key))
+	return fmt.Sprintf("token:fence:{%s}", common.GenerateHMAC(key))
 }
 
 func tokenCacheTTLSeconds() int {
