@@ -158,6 +158,8 @@ func ChargeViolationFeeIfNeeded(ctx *gin.Context, relayInfo *relaycommon.RelayIn
 		IsStream:       relayInfo.IsStream,
 		Group:          relayInfo.UsingGroup,
 		Other:          other,
+		// 违规费日志对应的请求已在 ProcessChannelError 计为失败。
+		SkipChannelStats: true,
 	})
 
 	return true

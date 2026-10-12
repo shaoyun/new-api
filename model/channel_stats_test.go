@@ -72,7 +72,12 @@ func TestChannelStatInputTokens(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			input, cache := channelStatInputTokens(tc.prompt, tc.other)
+			var other *LogOther
+			if tc.other != nil {
+				other = NewLogOther()
+				other.MergePublic(tc.other)
+			}
+			input, cache := channelStatInputTokens(tc.prompt, other)
 			assert.Equal(t, tc.wantInput, input)
 			assert.Equal(t, tc.wantCache, cache)
 		})
@@ -81,8 +86,9 @@ func TestChannelStatInputTokens(t *testing.T) {
 
 func TestRecordConsumeLogCountsWhenLogDisabled(t *testing.T) {
 	resetChannelStats(t)
+	original := common.LogConsumeEnabled
 	common.LogConsumeEnabled = false
-	t.Cleanup(func() { common.LogConsumeEnabled = true })
+	t.Cleanup(func() { common.LogConsumeEnabled = original })
 
 	gin.SetMode(gin.TestMode)
 	c, _ := gin.CreateTestContext(nil)
@@ -95,4 +101,21 @@ func TestRecordConsumeLogCountsWhenLogDisabled(t *testing.T) {
 	require.NoError(t, err)
 	require.Contains(t, got, 11)
 	assert.Equal(t, ChannelStatsSummary{Success: 1, InputTokens: 80, CacheTokens: 20}, *got[11])
+}
+
+func TestRecordConsumeLogSkipsChannelStats(t *testing.T) {
+	resetChannelStats(t)
+	gin.SetMode(gin.TestMode)
+	c, _ := gin.CreateTestContext(nil)
+
+	// Channel tests and violation fees are not relay traffic: counting them
+	// would let a disabled channel accumulate successes it never served.
+	RecordConsumeLog(c, 1, RecordConsumeLogParams{ChannelId: 12, PromptTokens: 10, SkipChannelStats: true})
+	RecordConsumeLog(c, 1, RecordConsumeLogParams{ChannelId: 12, PromptTokens: 7})
+	require.NoError(t, FlushChannelStats())
+
+	got, err := GetChannelStatsSummaries([]int{12}, 0)
+	require.NoError(t, err)
+	require.Contains(t, got, 12)
+	assert.Equal(t, ChannelStatsSummary{Success: 1, InputTokens: 7}, *got[12])
 }

@@ -342,9 +342,6 @@ function TagWeightCell({ channel }: { channel: TagRow }) {
 const MAX_INLINE_BALANCE_CHARS = 8
 const SENSITIVE_MASK = '••••'
 
-/**
- * Balance cell component with click to update
- */
 /** Column header whose hover text explains how the metric is computed */
 function ExplainedHeader(props: { label: string; description: string }) {
   return (
@@ -392,6 +389,7 @@ function SuccessRateCell({ channel }: { channel: Channel }) {
               variant={getSuccessRateVariant(rate)}
               size='sm'
               copyable={false}
+              tabIndex={0}
               className='-ml-1.5 cursor-help'
             />
           }
@@ -437,6 +435,9 @@ function CacheHitRateCell({ channel }: { channel: Channel }) {
   )
 }
 
+/**
+ * Balance cell component with click to update
+ */
 export function BalanceCell({ channel }: { channel: Channel }) {
   const { t, i18n } = useTranslation()
   const queryClient = useQueryClient()

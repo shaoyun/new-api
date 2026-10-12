@@ -54,6 +54,14 @@ func isReservedLogOtherKey(key string) bool {
 	}
 }
 
+// publicValue reads one public field without copying the whole map.
+func (o *LogOther) publicValue(key string) any {
+	if o == nil {
+		return nil
+	}
+	return o.public[key]
+}
+
 // SetPublic records metadata that log owners may receive from self/token log APIs.
 // It rejects role-scoped and legacy-sensitive keys so new writers cannot recreate
 // the historical channel/reject-reason leak.

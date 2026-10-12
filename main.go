@@ -242,6 +242,9 @@ func main() {
 	if common.DataExportEnabled {
 		model.SaveQuotaDataCache()
 	}
+	if err := model.FlushChannelStats(); err != nil {
+		common.SysError(fmt.Sprintf("failed to flush channel stats on shutdown: %v", err))
+	}
 	common.SysLog("server exited")
 }
 

@@ -195,22 +195,24 @@ func StartChannelStatsFlusher() {
 // channelStatInputTokens 按厂商语义归一输入 token（缓存命中率分母），口径与日志统计的
 // logStatTotalInputTokensExpr 一致：Anthropic 语义 prompt 不含缓存，需加上缓存读写；
 // 其余厂商 prompt 已包含缓存。
-func channelStatInputTokens(promptTokens int, other map[string]any) (input, cache int64) {
-	toInt64 := func(v any) int64 {
-		switch n := v.(type) {
-		case int:
-			return int64(n)
-		case int64:
-			return n
-		case float64:
-			return int64(n)
-		}
-		return 0
-	}
+func channelStatInputTokens(promptTokens int, other *LogOther) (input, cache int64) {
 	input = int64(promptTokens)
-	cache = toInt64(other["cache_tokens"])
-	if other["usage_semantic"] == "anthropic" {
-		input += cache + toInt64(other["cache_creation_tokens"])
+	cache = channelStatInt(other.publicValue("cache_tokens"))
+	if other.publicValue("usage_semantic") == "anthropic" {
+		input += cache + channelStatInt(other.publicValue("cache_creation_tokens"))
 	}
 	return input, cache
+}
+
+// channelStatInt 兼容直接写入的整数与 JSON 解码后的浮点数。
+func channelStatInt(value any) int64 {
+	switch n := value.(type) {
+	case int:
+		return int64(n)
+	case int64:
+		return n
+	case float64:
+		return int64(n)
+	}
+	return 0
 }
