@@ -415,6 +415,10 @@ func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTo
 	} else {
 		finalGroupRatio = groupRatio
 	}
+	// 使用提交时快照的用户折扣，不重新读取用户当前折扣
+	if bc := task.PrivateData.BillingContext; bc != nil {
+		finalGroupRatio *= model.EffectiveUserDiscount(bc.UserDiscount)
+	}
 
 	// 计算 OtherRatios 乘积（视频折扣、时长等）
 	otherMultiplier := 1.0
