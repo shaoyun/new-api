@@ -6908,6 +6908,8 @@
     "Last 24h: successful requests ÷ (success + channel failures). Failures include requests retried onto another channel; user-side errors such as insufficient quota are excluded. Hourly buckets, updated every minute.": "Last 24h: successful requests ÷ (success + channel failures). Failures include requests retried onto another channel; user-side errors such as insufficient quota are excluded. Hourly buckets, updated every minute.",
     "Last 24h: cache-read tokens ÷ input tokens. For Claude channels, input tokens include cache reads and cache writes.": "Last 24h: cache-read tokens ÷ input tokens. For Claude channels, input tokens include cache reads and cache writes.",
     "Success {{success}} / Failed {{fail}}": "Success {{success}} / Failed {{fail}}",
-    "Cache {{cache}} / Input {{input}}": "Cache {{cache}} / Input {{input}}"
+    "Cache {{cache}} / Input {{input}}": "Cache {{cache}} / Input {{input}}",
+    "User discount": "ユーザー割引",
+    "Multiplier applied on top of the group ratio, e.g. 0.8 means 20% off. Leave empty for no discount.": "グループ倍率にさらに掛ける係数です。例：0.8 は 20% 引き。空欄の場合は割引なしです。"
   }
 }

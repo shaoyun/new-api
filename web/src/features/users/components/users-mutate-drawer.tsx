@@ -440,6 +440,42 @@ export function UsersMutateDrawer({
 
                   <FormField
                     control={form.control}
+                    name='discount'
+                    render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>{t('User discount')}</FormLabel>
+                        <FormControl>
+                          <Input
+                            type='number'
+                            inputMode='decimal'
+                            min={0}
+                            max={1}
+                            step={0.01}
+                            name={field.name}
+                            ref={field.ref}
+                            onBlur={field.onBlur}
+                            value={field.value ?? ''}
+                            onChange={(e) =>
+                              field.onChange(
+                                e.target.value === ''
+                                  ? undefined
+                                  : Number(e.target.value)
+                              )
+                            }
+                          />
+                        </FormControl>
+                        <FormDescription>
+                          {t(
+                            'Multiplier applied on top of the group ratio, e.g. 0.8 means 20% off. Leave empty for no discount.'
+                          )}
+                        </FormDescription>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
                     name='quota_dollars'
                     render={({ field }) => (
                       <FormItem>

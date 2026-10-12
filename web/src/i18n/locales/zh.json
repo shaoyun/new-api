@@ -6908,6 +6908,8 @@
     "Last 24h: successful requests ÷ (success + channel failures). Failures include requests retried onto another channel; user-side errors such as insufficient quota are excluded. Hourly buckets, updated every minute.": "最近 24 小时：成功请求 ÷（成功 + 渠道失败）。失败包括被重试转移到其它渠道的请求；额度不足等用户侧错误不计入。按小时统计，每分钟更新。",
     "Last 24h: cache-read tokens ÷ input tokens. For Claude channels, input tokens include cache reads and cache writes.": "最近 24 小时：缓存读 token ÷ 输入 token。Claude 渠道的输入 token 包含缓存读与缓存写。",
     "Success {{success}} / Failed {{fail}}": "成功 {{success}} / 失败 {{fail}}",
-    "Cache {{cache}} / Input {{input}}": "缓存 {{cache}} / 输入 {{input}}"
+    "Cache {{cache}} / Input {{input}}": "缓存 {{cache}} / 输入 {{input}}",
+    "User discount": "用户折扣",
+    "Multiplier applied on top of the group ratio, e.g. 0.8 means 20% off. Leave empty for no discount.": "在分组倍率基础上再乘的系数，例如 0.8 表示八折。留空表示无折扣。"
   }
 }

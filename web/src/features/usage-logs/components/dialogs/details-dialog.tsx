@@ -236,6 +236,12 @@ function BillingBreakdown(props: {
       value: `${formatRatio(effectiveGR)}x`,
     })
   }
+  if (other.user_discount != null && Number.isFinite(other.user_discount)) {
+    rows.push({
+      label: t('User discount'),
+      value: `${formatRatio(other.user_discount)}x`,
+    })
+  }
 
   if (!isTieredExpr && isClaude && hasAnyCacheTokens(other)) {
     if (other.cache_ratio != null && other.cache_ratio !== 1) {

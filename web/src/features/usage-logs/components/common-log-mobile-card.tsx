@@ -38,6 +38,7 @@ import {
   isDisplayableLogType,
   isTimingLogType,
 } from '../lib/utils'
+import { formatRatioCompact } from './columns/common-logs-columns'
 import { ModelBadge, ResponseModelDetails } from './model-badge'
 import { StreamTpsCell, TimingMetricsCell } from './timing-metrics-cell'
 import { useUsageLogsContext } from './usage-logs-provider'
@@ -76,6 +77,7 @@ export function CommonLogMobileCard<TData>(props: {
     other?.user_group_ratio != null && other.user_group_ratio !== -1
       ? other.user_group_ratio
       : other?.group_ratio
+  const userDiscount = other?.user_discount
   const fields: Record<FieldName, LogField> = {
     model: {
       label: t('Model'),
@@ -284,6 +286,13 @@ export function CommonLogMobileCard<TData>(props: {
             props.cells.has('token_name') && (
               <div className='text-muted-foreground col-span-2 [overflow-wrap:anywhere]'>
                 {t('Group Ratio')}: {groupRatio}×
+              </div>
+            )}
+          {userDiscount != null &&
+            Number.isFinite(userDiscount) &&
+            props.cells.has('token_name') && (
+              <div className='text-muted-foreground col-span-2 [overflow-wrap:anywhere]'>
+                {t('User discount')}: {formatRatioCompact(userDiscount)}×
               </div>
             )}
         </div>
