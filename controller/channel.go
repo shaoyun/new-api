@@ -314,6 +314,7 @@ func GetAllChannels(c *gin.Context) {
 	for _, r := range results {
 		typeCounts[r.Type] = r.Count
 	}
+	model.AttachChannelStats(channelData)
 	common.ApiSuccess(c, gin.H{
 		"items":       channelData,
 		"total":       total,
@@ -507,6 +508,7 @@ func SearchChannels(c *gin.Context) {
 		clearChannelInfo(datum)
 		sanitizeChannelForRole(c, datum)
 	}
+	model.AttachChannelStats(pagedData)
 
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,

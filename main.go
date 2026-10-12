@@ -351,6 +351,7 @@ func InitResources() error {
 	}
 
 	perfmetrics.Init()
+	model.StartChannelStatsFlusher()
 
 	// 启动系统监控
 	common.StartSystemMonitor()

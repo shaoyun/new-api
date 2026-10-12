@@ -337,6 +337,9 @@ type RecordConsumeLogParams struct {
 }
 
 func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams) {
+	// 渠道统计不受消费日志开关影响。
+	statInput, statCache := channelStatInputTokens(params.PromptTokens, params.Other.Snapshot())
+	AddChannelStat(params.ChannelId, 1, 0, statInput, statCache)
 	if !common.LogConsumeEnabled {
 		return
 	}

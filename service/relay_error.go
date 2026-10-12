@@ -73,6 +73,10 @@ func ProcessChannelError(c *gin.Context, channelError types.ChannelError, err *t
 		})
 	}
 
+	// 渠道失败计数与错误日志口径一致（排除额度不足等用户侧错误），但不受 ErrorLogEnabled 影响。
+	if types.IsRecordErrorLog(err) {
+		model.AddChannelStat(channelError.ChannelId, 0, 1, 0, 0)
+	}
 	if constant.ErrorLogEnabled && types.IsRecordErrorLog(err) {
 		userId := c.GetInt("id")
 		tokenName := c.GetString("token_name")
