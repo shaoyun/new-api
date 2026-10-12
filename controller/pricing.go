@@ -52,6 +52,11 @@ func GetPricing(c *gin.Context) {
 					groupRatio[g] = ratio
 				}
 			}
+			if discount := model.EffectiveUserDiscount(user.Discount); discount < 1 {
+				for g := range groupRatio {
+					groupRatio[g] *= discount
+				}
+			}
 		}
 	}
 
