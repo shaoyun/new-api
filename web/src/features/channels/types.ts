@@ -64,6 +64,15 @@ export const channelSchema = z.object({
   header_override: z.string().nullish(),
   remark: z.string().default(''),
   max_input_tokens: z.number().default(0),
+  // Last-24h request stats; absent when the channel had no traffic
+  stats: z
+    .object({
+      success: z.number(),
+      fail: z.number(),
+      input_tokens: z.number(),
+      cache_tokens: z.number(),
+    })
+    .nullish(),
   channel_info: channelInfoSchema.default({
     is_multi_key: false,
     multi_key_size: 0,
