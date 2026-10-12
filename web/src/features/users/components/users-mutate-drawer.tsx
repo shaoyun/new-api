@@ -115,6 +115,9 @@ export function UsersMutateDrawer({
   const { triggerRefresh, requestVerification } = useUsers()
   const currentUser = useAuthStore((s) => s.auth.user)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  // Edit saves stay disabled until the fresh user detail has loaded, so a
+  // failed load can never submit placeholder values over stored ones.
+  const [detailLoaded, setDetailLoaded] = useState(false)
   const [quotaDialogOpen, setQuotaDialogOpen] = useState(false)
   // Matrix as loaded from the server; an unchanged matrix is not resubmitted so
   // routine edits of an administrator do not require step-up verification.
@@ -144,12 +147,16 @@ export function UsersMutateDrawer({
   // Load existing data when updating
   useEffect(() => {
     if (open && isUpdate && currentRow) {
-      // For update, fetch fresh data
+      // Seed from the list row so fields such as discount hold stored values
+      // before the fresh detail arrives, then fetch fresh data
+      setDetailLoaded(false)
+      form.reset(transformUserToFormDefaults(currentRow))
       getUser(currentRow.id)
         .then((result) => {
           if (result.success && result.data) {
             loadedPermissions.current = result.data.admin_permissions
             form.reset(transformUserToFormDefaults(result.data))
+            setDetailLoaded(true)
           } else {
             handleServerError(result, t('Failed to load'))
           }
@@ -171,6 +178,8 @@ export function UsersMutateDrawer({
   const targetIsAdmin = (selectedRole ?? currentRow?.role ?? 0) >= ROLE.ADMIN
 
   const onSubmit = async (data: UserFormValues) => {
+    // Enter in an input bypasses the disabled submit button
+    if (isUpdate && !detailLoaded) return
     if (!isUpdate || data.password) {
       if (!accountPasswordSchema.safeParse(data.password ?? '').success) {
         form.setError('password', {
@@ -621,7 +630,11 @@ export function UsersMutateDrawer({
             <SheetClose render={<Button variant='outline' />}>
               {t('Close')}
             </SheetClose>
-            <Button form='user-form' type='submit' disabled={isSubmitting}>
+            <Button
+              form='user-form'
+              type='submit'
+              disabled={isSubmitting || (isUpdate && !detailLoaded)}
+            >
               {isSubmitting ? t('Saving...') : t('Save changes')}
             </Button>
           </SheetFooter>

@@ -202,15 +202,23 @@ export function useUsersColumns(): ColumnDef<User>[] {
         cell: ({ row }) => {
           const group = row.getValue('group') as string
           const discount = row.original.discount ?? 0
+          const discountLabel = `${formatNumber(discount, locale)}x`
           return (
             <BadgeCell>
               <GroupBadge group={group} className='font-normal' />
               {discount > 0 && discount < 1 && (
                 <Tooltip>
-                  <TooltipTrigger render={<span />}>
+                  <TooltipTrigger
+                    render={
+                      <span
+                        tabIndex={0}
+                        aria-label={`${t('User discount')} ${discountLabel}`}
+                      />
+                    }
+                  >
                     <GroupMultiplierBadge
                       ratio={discount}
-                      label={`${formatNumber(discount, locale)}x`}
+                      label={discountLabel}
                     />
                   </TooltipTrigger>
                   <TooltipContent>{t('User discount')}</TooltipContent>
