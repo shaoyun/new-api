@@ -75,7 +75,7 @@ end
 redis.call('HSET', KEYS[1],
   'Id', ARGV[2], 'Group', ARGV[3], 'Email', ARGV[4],
   'Status', ARGV[5], 'Role', ARGV[6], 'Username', ARGV[7],
-  'Setting', ARGV[8], 'AuthVersion', ARGV[1], 'CacheSchema', ARGV[9])
+  'Setting', ARGV[8], 'Discount', ARGV[13], 'AuthVersion', ARGV[1], 'CacheSchema', ARGV[9])
 if ARGV[10] == '1' and redis.call('HEXISTS', KEYS[1], 'Quota') == 0 then
   redis.call('HSET', KEYS[1], 'Quota', ARGV[11])
 end
@@ -85,6 +85,7 @@ return 1`
 		[]string{getUserCacheKey(user.Id), getUserAuthFenceKey(user.Id), getUserAuthVersionKey(user.Id)},
 		user.AuthVersion, user.Id, user.Group, user.Email, user.Status, user.Role,
 		user.Username, user.Setting, user.CacheSchema, includeQuotaArg, user.Quota, ttl,
+		strconv.FormatFloat(user.Discount, 'g', -1, 64),
 	).Int()
 	if err != nil {
 		return err
@@ -259,6 +260,9 @@ if redis.call('EXISTS', KEYS[1]) == 0 then
   return 1
 end
 if current ~= incoming then
+  return 1
+end
+if tonumber(redis.call('HGET', KEYS[1], 'CacheSchema') or '0') ~= tonumber(ARGV[4]) then
   return 1
 end
 redis.call('HSET', KEYS[1], ARGV[2], ARGV[3], 'CacheSchema', ARGV[4])
