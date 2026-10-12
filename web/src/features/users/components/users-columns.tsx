@@ -211,6 +211,7 @@ export function useUsersColumns(): ColumnDef<User>[] {
                   <TooltipTrigger
                     render={
                       <span
+                        role='img'
                         tabIndex={0}
                         aria-label={`${t('User discount')} ${discountLabel}`}
                       />

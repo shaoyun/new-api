@@ -459,7 +459,7 @@ export function UsersMutateDrawer({
                             inputMode='decimal'
                             min={0}
                             max={1}
-                            step={0.01}
+                            step='any'
                             name={field.name}
                             ref={field.ref}
                             onBlur={field.onBlur}

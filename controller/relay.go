@@ -625,6 +625,11 @@ func executeTaskSubmissionWith(
 	task.PrivateData.SubscriptionId = relayInfo.SubscriptionId
 	task.PrivateData.TokenId = relayInfo.TokenId
 	task.PrivateData.NodeName = common.NodeName
+	// Store 0 for "no discount" so omitempty drops the field.
+	snapshotUserDiscount := relayInfo.UserDiscount
+	if snapshotUserDiscount >= 1 {
+		snapshotUserDiscount = 0
+	}
 	task.PrivateData.BillingContext = &model.TaskBillingContext{
 		ModelPrice:      relayInfo.PriceData.ModelPrice,
 		GroupRatio:      relayInfo.PriceData.GroupRatioInfo.GroupRatio,
@@ -633,7 +638,7 @@ func executeTaskSubmissionWith(
 		OriginModelName: relayInfo.OriginModelName,
 		PerCallBilling:  common.StringsContains(constant.TaskPricePatches, relayInfo.OriginModelName) || relayInfo.PriceData.UsePrice,
 		TieredSnapshot:  relayInfo.TieredBillingSnapshot,
-		UserDiscount:    relayInfo.UserDiscount,
+		UserDiscount:    snapshotUserDiscount,
 	}
 	task.Quota = result.Quota
 	task.Data = result.TaskData
