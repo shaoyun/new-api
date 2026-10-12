@@ -19,6 +19,8 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/authz"
+	"github.com/QuantumNous/new-api/setting"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/go-redis/redis/v8"
 
@@ -640,4 +642,58 @@ func TestManageUserQuotaCacheUsesCommittedIntegerDifference(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestUpdateUserDiscount(t *testing.T) {
+	db := setupManageUserTestDB(t)
+	target := model.User{Username: "discount-user", Password: "discount-user-hash", Role: common.RoleCommonUser, Status: common.UserStatusEnabled, Group: "default", AuthVersion: 1, AffCode: "discount-user-aff", Discount: 0.5}
+	require.NoError(t, db.Create(&target).Error)
+
+	for _, tc := range []struct {
+		name         string
+		discountJSON string
+		wantSuccess  bool
+		wantStored   float64
+	}{
+		{name: "set discount", discountJSON: `,"discount":0.8`, wantSuccess: true, wantStored: 0.8},
+		{name: "absent discount keeps stored value", discountJSON: ``, wantSuccess: true, wantStored: 0.8},
+		{name: "out of range high", discountJSON: `,"discount":1.5`, wantStored: 0.8},
+		{name: "out of range negative", discountJSON: `,"discount":-0.1`, wantStored: 0.8},
+		{name: "one clears discount", discountJSON: `,"discount":1`, wantSuccess: true, wantStored: 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := fmt.Sprintf(`{"id":%d,"username":"discount-user","display_name":"Discount","group":"default"%s}`, target.Id, tc.discountJSON)
+			recorder := adminUserRequest(http.MethodPut, "/api/user/", body, "", service.AuthIdentity{UserID: 9999}, common.RoleAdminUser, nil, UpdateUser)
+			assert.Contains(t, recorder.Body.String(), fmt.Sprintf(`"success":%t`, tc.wantSuccess), recorder.Body.String())
+			var stored model.User
+			require.NoError(t, db.First(&stored, target.Id).Error)
+			assert.Equal(t, tc.wantStored, stored.Discount)
+			assert.EqualValues(t, 1, stored.AuthVersion)
+		})
+	}
+}
+
+func TestGetUserGroupsRoundsDiscountedRatio(t *testing.T) {
+	db := setupManageUserTestDB(t)
+	user := model.User{Username: "ratio-user", Password: "ratio-user-hash", Role: common.RoleCommonUser, Status: common.UserStatusEnabled, Group: "default", AuthVersion: 1, AffCode: "ratio-user-aff", Discount: 0.8}
+	require.NoError(t, db.Create(&user).Error)
+
+	previousGroups, previousRatios := setting.UserUsableGroups2JSONString(), ratio_setting.GroupRatio2JSONString()
+	t.Cleanup(func() {
+		require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(previousGroups))
+		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(previousRatios))
+	})
+	require.NoError(t, setting.UpdateUserUsableGroupsByJSONString(`{"default":"Default"}`))
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":0.9}`))
+
+	recorder := adminUserRequest(http.MethodGet, "/api/user/self/groups", "", "", service.AuthIdentity{UserID: user.Id}, common.RoleCommonUser, nil, GetUserGroups)
+
+	var response struct {
+		Data map[string]struct {
+			Ratio float64 `json:"ratio"`
+		} `json:"data"`
+	}
+	require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &response), recorder.Body.String())
+	// 0.9 * 0.8 is 0.7200000000000001 in float64; users must see the rounded value.
+	assert.Equal(t, 0.72, response.Data["default"].Ratio)
 }

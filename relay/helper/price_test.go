@@ -745,3 +745,39 @@ func (s *priceTestReservation) Refund(*gin.Context)      {}
 func (s *priceTestReservation) NeedsRefund() bool        { return false }
 func (s *priceTestReservation) GetPreConsumedQuota() int { return s.held }
 func (s *priceTestReservation) Reserve(quota int) error  { s.held = max(s.held, quota); return nil }
+
+func TestHandleGroupRatioAppliesUserDiscount(t *testing.T) {
+	previousGroupRatio := ratio_setting.GroupRatio2JSONString()
+	previousGroupGroupRatio := ratio_setting.GroupGroupRatio2JSONString()
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(previousGroupRatio))
+		require.NoError(t, ratio_setting.UpdateGroupGroupRatioByJSONString(previousGroupGroupRatio))
+	})
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1,"vip":1.5}`))
+	require.NoError(t, ratio_setting.UpdateGroupGroupRatioByJSONString(`{"svip":{"vip":0.9}}`))
+
+	tests := []struct {
+		name         string
+		userGroup    string
+		usingGroup   string
+		userDiscount float64
+		wantRatio    float64
+		wantSpecial  float64
+		wantHas      bool
+	}{
+		{"no discount", "default", "default", 1, 1, -1, false},
+		{"discount on group ratio", "default", "vip", 0.8, 1.2, -1, false},
+		{"discount on special ratio", "svip", "vip", 0.5, 0.45, 0.45, true},
+		{"unset discount leaves ratio unchanged", "default", "vip", 0, 1.5, -1, false},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+			info := &relaycommon.RelayInfo{UserGroup: tc.userGroup, UsingGroup: tc.usingGroup, UserDiscount: tc.userDiscount}
+			got := HandleGroupRatio(ctx, info)
+			assert.InDelta(t, tc.wantRatio, got.GroupRatio, 1e-9)
+			assert.InDelta(t, tc.wantSpecial, got.GroupSpecialRatio, 1e-9)
+			assert.Equal(t, tc.wantHas, got.HasSpecialRatio)
+		})
+	}
+}

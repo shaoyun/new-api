@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"math"
 	"net/http"
 	"net/http/httptest"
@@ -1058,6 +1059,49 @@ func TestRecalculate_PositiveDelta(t *testing.T) {
 	require.NotNil(t, log)
 	assert.Equal(t, model.LogTypeConsume, log.Type)
 	assert.Equal(t, actualQuota-preConsumed, log.Quota)
+}
+
+func TestRecalculate_AppliesSnapshottedUserDiscount(t *testing.T) {
+	previousModelRatio := ratio_setting.ModelRatio2JSONString()
+	previousGroupRatio := ratio_setting.GroupRatio2JSONString()
+	previousGroupGroupRatio := ratio_setting.GroupGroupRatio2JSONString()
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(previousModelRatio))
+		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(previousGroupRatio))
+		require.NoError(t, ratio_setting.UpdateGroupGroupRatioByJSONString(previousGroupGroupRatio))
+	})
+	require.NoError(t, ratio_setting.UpdateModelRatioByJSONString(`{"test-model":1}`))
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1}`))
+	require.NoError(t, ratio_setting.UpdateGroupGroupRatioByJSONString(`{}`))
+
+	const totalTokens = 3001
+	tests := []struct {
+		name         string
+		userDiscount float64
+		wantQuota    int
+	}{
+		{"snapshot without discount", 0, 3001},
+		{"snapshot with discount 0.5 truncates 1500.5", 0.5, 1500},
+		{"snapshot with invalid discount is ignored", 1.5, 3001},
+	}
+	for i, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			truncate(t)
+			userID := 40 + i
+			const initQuota, preConsumed, tokenRemain = 10000, 2000, 5000
+			seedUser(t, userID, initQuota)
+			seedToken(t, userID, userID, fmt.Sprintf("sk-recalc-discount-%d", i), tokenRemain)
+			seedChannel(t, userID)
+			seedChargedAccounting(t, userID, userID, userID, preConsumed, 1)
+
+			task := makeTask(userID, userID, preConsumed, userID, BillingSourceWallet, 0)
+			task.PrivateData.BillingContext.UserDiscount = tc.userDiscount
+
+			require.True(t, RecalculateTaskQuotaByTokens(context.Background(), task, totalTokens))
+			assert.Equal(t, tc.wantQuota, task.Quota)
+			assert.Equal(t, initQuota-(tc.wantQuota-preConsumed), getUserQuota(t, userID))
+		})
+	}
 }
 
 func TestRecalculate_NegativeDelta(t *testing.T) {

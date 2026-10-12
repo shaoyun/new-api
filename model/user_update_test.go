@@ -2,6 +2,7 @@ package model
 
 import (
 	"errors"
+	"math"
 	"strconv"
 	"testing"
 	"time"
@@ -622,4 +623,107 @@ func TestValidateAuthSessionWithTxChecksAccessTokenIdentity(t *testing.T) {
 			assert.ErrorIs(t, plainErr, ErrUserSessionInactive)
 		})
 	}
+}
+
+func TestEffectiveAndNormalizeUserDiscount(t *testing.T) {
+	effective := []struct {
+		name  string
+		input float64
+		want  float64
+	}{
+		{"unset", 0, 1},
+		{"valid", 0.8, 0.8},
+		{"one", 1, 1},
+		{"above one", 1.5, 1},
+		{"negative", -0.1, 1},
+		{"nan", math.NaN(), 1},
+	}
+	for _, tc := range effective {
+		t.Run("effective/"+tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, EffectiveUserDiscount(tc.input))
+		})
+	}
+
+	valid := []struct {
+		name  string
+		input float64
+		want  float64
+	}{
+		{"zero", 0, 0},
+		{"valid", 0.8, 0.8},
+		{"one normalizes to zero", 1, 0},
+	}
+	for _, tc := range valid {
+		t.Run("normalize/"+tc.name, func(t *testing.T) {
+			got, err := NormalizeUserDiscount(tc.input)
+			require.NoError(t, err)
+			assert.Equal(t, tc.want, got)
+		})
+	}
+
+	invalid := []struct {
+		name  string
+		input float64
+	}{
+		{"negative", -0.1},
+		{"above one", 1.01},
+		{"nan", math.NaN()},
+		{"positive inf", math.Inf(1)},
+	}
+	for _, tc := range invalid {
+		t.Run("normalize/"+tc.name, func(t *testing.T) {
+			_, err := NormalizeUserDiscount(tc.input)
+			assert.Error(t, err)
+		})
+	}
+}
+
+func TestUserEditPreservesDiscountUnlessUpdated(t *testing.T) {
+	setupUserUpdateTestState(t)
+
+	user := User{
+		Username:    "discount-edit-user",
+		Password:    "unused-password-hash",
+		Role:        common.RoleCommonUser,
+		Status:      common.UserStatusEnabled,
+		Group:       "default",
+		AuthVersion: 1,
+		Discount:    0.8,
+	}
+	require.NoError(t, DB.Create(&user).Error)
+
+	readDiscount := func() float64 {
+		var stored User
+		require.NoError(t, DB.First(&stored, user.Id).Error)
+		return stored.Discount
+	}
+	edit := func(update *float64) {
+		editing := User{Id: user.Id, Username: user.Username, Group: "default", DiscountUpdate: update}
+		require.NoError(t, editing.Edit(false))
+	}
+
+	edit(nil)
+	assert.Equal(t, 0.8, readDiscount())
+
+	half := 0.5
+	edit(&half)
+	assert.Equal(t, 0.5, readDiscount())
+
+	zero := 0.0
+	edit(&zero)
+	assert.Equal(t, 0.0, readDiscount())
+}
+
+func TestUserEditRejectsInvalidDiscountUpdate(t *testing.T) {
+	setupUserUpdateTestState(t)
+	user := createUserBindTestUser(t)
+	require.NoError(t, DB.Model(&User{}).Where("id = ?", user.Id).Update("discount", 0.8).Error)
+
+	invalid := 1.5
+	edit := User{Id: user.Id, Username: user.Username, Group: user.Group, DiscountUpdate: &invalid}
+	require.Error(t, edit.Edit(false))
+
+	var stored User
+	require.NoError(t, DB.First(&stored, user.Id).Error)
+	assert.Equal(t, 0.8, stored.Discount)
 }

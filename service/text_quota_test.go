@@ -1515,3 +1515,31 @@ func TestAppendToolSurchargeLogInfoWritesOnlyStructuredFields(t *testing.T) {
 	assert.NotContains(t, fields, "image_generation_call")
 	assert.NotContains(t, fields, "image_generation_call_price")
 }
+
+func TestTextOtherInfoRecordsUserDiscount(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	tests := []struct {
+		name     string
+		discount float64
+		want     bool
+	}{
+		{name: "discount applied", discount: 0.8, want: true},
+		{name: "unset", discount: 0, want: false},
+		{name: "no discount", discount: 1, want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+			relayInfo := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{}, UserDiscount: tt.discount}
+
+			other := GenerateTextOtherInfo(ctx, relayInfo, 1, 0.8, 1, 0, 0, 0, 0.8).Snapshot()
+
+			value, ok := other["user_discount"]
+			assert.Equal(t, tt.want, ok)
+			if tt.want {
+				assert.Equal(t, tt.discount, value)
+			}
+		})
+	}
+}

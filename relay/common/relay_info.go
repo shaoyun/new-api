@@ -85,8 +85,9 @@ type RelayInfo struct {
 	TokenKey          string
 	TokenGroup        string
 	UserId            int
-	UsingGroup        string // 使用的分组，当auto跨分组重试时，会变动
-	UserGroup         string // 用户所在分组
+	UsingGroup        string  // 使用的分组，当auto跨分组重试时，会变动
+	UserGroup         string  // 用户所在分组
+	UserDiscount      float64 // 用户折扣（有效值，1 表示无折扣）
 	TokenUnlimited    bool
 	StartTime         time.Time
 	FirstResponseTime time.Time
@@ -607,9 +608,15 @@ func genBaseRelayInfo(c *gin.Context, request dto.Request) *RelayInfo {
 	}
 	reasoningEffort := reasoningEffortFromRequest(request)
 	originModelName := common.GetContextKeyString(c, constant.ContextKeyOriginalModel)
+	// relay/common 不能反向 import model，这里内联 model.EffectiveUserDiscount 的判断。
+	userDiscount := c.GetFloat64(string(constant.ContextKeyUserDiscount))
+	if !(userDiscount > 0 && userDiscount < 1) {
+		userDiscount = 1
+	}
 	info := &RelayInfo{
 		Request:         request,
 		ReasoningEffort: reasoningEffort,
+		UserDiscount:    userDiscount,
 
 		RequestId:  reqId,
 		UserId:     common.GetContextKeyInt(c, constant.ContextKeyUserId),

@@ -84,7 +84,7 @@ interface DetailSegment {
   danger?: boolean
 }
 
-function formatRatioCompact(ratio: number | undefined): string {
+export function formatRatioCompact(ratio: number | undefined): string {
   if (ratio == null || !Number.isFinite(ratio)) return '-'
   return ratio % 1 === 0
     ? String(ratio)
@@ -324,6 +324,12 @@ function buildTypeDetailSegments(
       if (effectiveRatio != null && Number.isFinite(effectiveRatio)) {
         segments.push({
           text: `${ratioLabel} ${formatRatioCompact(effectiveRatio)}x`,
+        })
+      }
+      if (other.user_discount != null && Number.isFinite(other.user_discount)) {
+        segments.push({
+          text: `${t('User discount')} ${formatRatioCompact(other.user_discount)}x`,
+          muted: true,
         })
       }
     }

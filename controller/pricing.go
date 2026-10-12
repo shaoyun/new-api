@@ -2,6 +2,7 @@ package controller
 
 import (
 	"maps"
+	"math"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
@@ -35,6 +36,12 @@ func filterPricingByUsableGroups(pricing []model.Pricing, usableGroup map[string
 	return filtered
 }
 
+// roundDiscountedDisplayRatio trims float noise (0.9*0.8 = 0.7200000000000001)
+// from discounted ratios shown to users. Display only; billing keeps full precision.
+func roundDiscountedDisplayRatio(ratio float64) float64 {
+	return math.Round(ratio*1e6) / 1e6
+}
+
 func GetPricing(c *gin.Context) {
 	pricing := model.GetPricing()
 	userId, exists := c.Get("id")
@@ -50,6 +57,11 @@ func GetPricing(c *gin.Context) {
 				ratio, ok := ratio_setting.GetGroupGroupRatio(group, g)
 				if ok {
 					groupRatio[g] = ratio
+				}
+			}
+			if discount := model.EffectiveUserDiscount(user.Discount); discount < 1 {
+				for g := range groupRatio {
+					groupRatio[g] = roundDiscountedDisplayRatio(groupRatio[g] * discount)
 				}
 			}
 		}

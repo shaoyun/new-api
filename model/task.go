@@ -169,6 +169,7 @@ type TaskBillingContext struct {
 	OriginModelName string                       `json:"origin_model_name,omitempty"` // 模型名称，必须为OriginModelName
 	PerCallBilling  bool                         `json:"per_call_billing,omitempty"`  // 按次计费：跳过轮询阶段的差额结算
 	TieredSnapshot  *billingexpr.BillingSnapshot `json:"tiered_snapshot,omitempty"`
+	UserDiscount    float64                      `json:"user_discount,omitempty"` // 提交时的用户折扣快照（有效值，缺省视为无折扣）
 }
 
 // ResultRetrievable reports whether retrieval surfaces (native query routes,

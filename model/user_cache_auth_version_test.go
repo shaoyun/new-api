@@ -2,12 +2,15 @@ package model
 
 import (
 	"errors"
+	"net/http/httptest"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/alicebob/miniredis/v2"
+	"github.com/gin-gonic/gin"
 	"github.com/go-redis/redis/v8"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -220,4 +223,57 @@ func TestUserAuthVersionFenceAndCommittedFloorAreMonotonic(t *testing.T) {
 	committed, err = common.RDB.Get(t.Context(), getUserAuthVersionKey(userID)).Result()
 	require.NoError(t, err)
 	assert.Equal(t, "5", committed)
+}
+
+func TestUserCacheCarriesDiscount(t *testing.T) {
+	truncateTables(t)
+	useUserCacheMiniRedis(t)
+
+	user := User{
+		Username:    "discount-cache-user",
+		Password:    "password",
+		Role:        common.RoleCommonUser,
+		Status:      common.UserStatusEnabled,
+		Group:       "default",
+		AuthVersion: 1,
+		Discount:    0.8,
+	}
+	require.NoError(t, DB.Create(&user).Error)
+
+	base := user.ToBaseUser()
+	assert.Equal(t, 0.8, base.Discount)
+	assert.Equal(t, 3, base.CacheSchema)
+
+	gin.SetMode(gin.TestMode)
+	newContext := func() *gin.Context {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		return c
+	}
+	c := newContext()
+	base.WriteContext(c)
+	assert.Equal(t, 0.8, c.GetFloat64(string(constant.ContextKeyUserDiscount)))
+
+	noDiscount := (&User{Id: user.Id, AuthVersion: 1}).ToBaseUser()
+	c = newContext()
+	noDiscount.WriteContext(c)
+	assert.Equal(t, 1.0, c.GetFloat64(string(constant.ContextKeyUserDiscount)))
+
+	// The discount must survive the Redis hash round trip, not only ToBaseUser.
+	require.NoError(t, populateUserCache(user))
+	cached, err := cacheGetUserBase(user.Id)
+	require.NoError(t, err)
+	assert.Equal(t, 0.8, cached.Discount)
+
+	// A cache refresh that rewrites non-quota fields keeps the discount too.
+	user.Discount = 0.5
+	require.NoError(t, updateUserCache(user))
+	cached, err = cacheGetUserBase(user.Id)
+	require.NoError(t, err)
+	assert.Equal(t, 0.5, cached.Discount)
+
+	// A single-field update must not promote a stale-schema hash to the new schema.
+	require.NoError(t, common.RDB.HSet(t.Context(), getUserCacheKey(user.Id), "CacheSchema", "2").Err())
+	require.NoError(t, updateUserCacheFieldAtVersion(user.Id, "Group", "pro", 1))
+	_, err = cacheGetUserBase(user.Id)
+	assert.Error(t, err)
 }
