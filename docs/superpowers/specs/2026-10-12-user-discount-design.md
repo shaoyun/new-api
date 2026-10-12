@@ -41,15 +41,14 @@ func EffectiveUserDiscount(discount float64) float64
 
 ### 统一入口
 
-`types.GroupRatioInfo` 新增 `UserDiscount float64`（1 表示无折扣）。
+`RelayInfo` 新增 `UserDiscount float64`（有效值，1 表示无折扣），在 `GenRelayInfo` 从 context 读取。
 
 `relay/helper/price.go` 的 `HandleGroupRatio`：
 
 1. 按现有逻辑得到 `GroupRatio` / `GroupSpecialRatio` / `HasSpecialRatio`。
-2. 从 context 读取有效折扣（缺省 1），写入 `UserDiscount`。
-3. 当 `UserDiscount < 1`：`GroupRatio *= UserDiscount`；若 `HasSpecialRatio`，`GroupSpecialRatio *= UserDiscount`（保持两者一致，日志与前端「用户专属倍率」展示即折后值）。
+2. 当 `relayInfo.UserDiscount < 1`：`GroupRatio *= UserDiscount`；若 `HasSpecialRatio`，`GroupSpecialRatio *= UserDiscount`（保持两者一致，日志与前端「用户专属倍率」展示即折后值）。
 
-`RelayInfo` 新增 `UserDiscount float64`，在 `GenRelayInfo` 从 context 读取，供不经过 `HandleGroupRatio` 的路径使用。
+不经过 `HandleGroupRatio` 的路径同样读 `relayInfo.UserDiscount`。
 
 ### 自动生效的路径（只读 `GroupRatioInfo.GroupRatio`，无需改动）
 
