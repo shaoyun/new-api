@@ -68,6 +68,7 @@ const (
 	// ContextKeyLanguage stores the user's language preference for i18n
 	ContextKeyLanguage             ContextKey = "language"
 	ContextKeyIsStream             ContextKey = "is_stream"
+	ContextKeyIsChannelTest        ContextKey = "is_channel_test"
 	ContextKeyResponseStreamStatus ContextKey = "response_stream_status"
 
 	// ContextKeyAuditLogged marks that the current request has already recorded

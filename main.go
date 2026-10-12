@@ -242,6 +242,9 @@ func main() {
 	if common.DataExportEnabled {
 		model.SaveQuotaDataCache()
 	}
+	if err := model.FlushChannelStats(); err != nil {
+		common.SysError(fmt.Sprintf("failed to flush channel stats on shutdown: %v", err))
+	}
 	common.SysLog("server exited")
 }
 
@@ -351,6 +354,7 @@ func InitResources() error {
 	}
 
 	perfmetrics.Init()
+	model.StartChannelStatsFlusher()
 
 	// 启动系统监控
 	common.StartSystemMonitor()

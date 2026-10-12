@@ -240,6 +240,7 @@ func testChannel(ctx context.Context, channel *model.Channel, testUserID int, te
 	}
 
 	info.IsChannelTest = true
+	c.Set(string(constant.ContextKeyIsChannelTest), true)
 	info.InitChannelMeta(c)
 
 	err = attachTestBillingRequestInput(info, request)

@@ -87,6 +87,8 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo, task *model
 		TokenId:   info.TokenId,
 		Group:     info.UsingGroup,
 		Other:     other,
+		// 失败任务不计入渠道成功率。
+		SkipChannelStats: task.Status == model.TaskStatusFailure,
 	})
 	model.UpdateUserUsedQuotaAndRequestCount(info.UserId, info.PriceData.Quota)
 	model.UpdateChannelUsedQuota(info.ChannelId, info.PriceData.Quota)

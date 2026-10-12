@@ -52,7 +52,7 @@ import {
   formatQuotaWithCurrency,
   getCurrencyLabel,
 } from '@/lib/currency'
-import { formatTimestampToDate } from '@/lib/format'
+import { formatCompactNumber, formatTimestampToDate } from '@/lib/format'
 import { handleServerError } from '@/lib/handle-server-error'
 import { createServerError } from '@/lib/server-error-message'
 import { truncateText } from '@/lib/utils'
@@ -69,9 +69,12 @@ import {
   formatRelativeTime,
   formatResponseTime,
   getBalanceVariant,
+  getCacheHitRate,
   getChannelTypeIcon,
   getChannelTypeLabel,
   getResponseTimeConfig,
+  getSuccessRate,
+  getSuccessRateVariant,
   isMultiKeyChannel,
   parseModelsList,
   parseGroupsList,
@@ -338,6 +341,99 @@ function TagWeightCell({ channel }: { channel: TagRow }) {
  */
 const MAX_INLINE_BALANCE_CHARS = 8
 const SENSITIVE_MASK = '••••'
+
+/** Column header whose hover text explains how the metric is computed */
+function ExplainedHeader(props: { label: string; description: string }) {
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <span
+              tabIndex={0}
+              className='cursor-help underline decoration-dotted underline-offset-4'
+            />
+          }
+        >
+          {props.label}
+        </TooltipTrigger>
+        <TooltipContent className='max-w-xs'>
+          <p>{props.description}</p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  )
+}
+
+function formatRatePercent(rate: number, locale: Intl.LocalesArgument) {
+  return Intl.NumberFormat(locale, {
+    style: 'percent',
+    maximumFractionDigits: 1,
+  }).format(rate)
+}
+
+function SuccessRateCell({ channel }: { channel: Channel }) {
+  const { t, i18n } = useTranslation()
+  const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
+  const rate = getSuccessRate(channel.stats)
+  if (rate === null || !channel.stats) {
+    return <span className='text-muted-foreground'>-</span>
+  }
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <StatusBadge
+              label={formatRatePercent(rate, locale)}
+              variant={getSuccessRateVariant(rate)}
+              size='sm'
+              copyable={false}
+              tabIndex={0}
+              className='-ml-1.5 cursor-help'
+            />
+          }
+        />
+        <TooltipContent>
+          <p>
+            {t('Success {{success}} / Failed {{fail}}', {
+              success: formatCompactNumber(channel.stats.success, locale),
+              fail: formatCompactNumber(channel.stats.fail, locale),
+            })}
+          </p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  )
+}
+
+function CacheHitRateCell({ channel }: { channel: Channel }) {
+  const { t, i18n } = useTranslation()
+  const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
+  const rate = getCacheHitRate(channel.stats)
+  if (rate === null || !channel.stats) {
+    return <span className='text-muted-foreground'>-</span>
+  }
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger
+          render={<span tabIndex={0} className='cursor-help tabular-nums' />}
+        >
+          {formatRatePercent(rate, locale)}
+        </TooltipTrigger>
+        <TooltipContent>
+          <p>
+            {t('Cache {{cache}} / Input {{input}}', {
+              cache: formatCompactNumber(channel.stats.cache_tokens, locale),
+              input: formatCompactNumber(channel.stats.input_tokens, locale),
+            })}
+          </p>
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  )
+}
 
 /**
  * Balance cell component with click to update
@@ -1204,6 +1300,42 @@ export function useChannelsColumns(
             />
           )
         },
+        size: 110,
+      },
+
+      // Success rate (last 24h)
+      {
+        id: 'success_rate',
+        accessorFn: (row) => getSuccessRate(row.stats),
+        header: () => (
+          <ExplainedHeader
+            label={t('Success rate')}
+            description={t(
+              'Last 24h: successful requests ÷ (success + channel failures). Failures include requests retried onto another channel; user-side errors such as insufficient quota are excluded. Hourly buckets, updated every minute.'
+            )}
+          />
+        ),
+        enableSorting: false,
+        meta: { mobileHidden: true, label: t('Success rate') },
+        cell: ({ row }) => <SuccessRateCell channel={row.original} />,
+        size: 100,
+      },
+
+      // Cache hit rate (last 24h)
+      {
+        id: 'cache_hit_rate',
+        accessorFn: (row) => getCacheHitRate(row.stats),
+        header: () => (
+          <ExplainedHeader
+            label={t('Cache hit rate')}
+            description={t(
+              'Last 24h: cache-read tokens ÷ input tokens. For Claude channels, input tokens include cache reads and cache writes.'
+            )}
+          />
+        ),
+        enableSorting: false,
+        meta: { mobileHidden: true, label: t('Cache hit rate') },
+        cell: ({ row }) => <CacheHitRateCell channel={row.original} />,
         size: 110,
       },
 

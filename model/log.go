@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/constant"
 	"github.com/QuantumNous/new-api/logger"
 	"github.com/QuantumNous/new-api/types"
 
@@ -334,9 +335,17 @@ type RecordConsumeLogParams struct {
 	IsStream         bool      `json:"is_stream"`
 	Group            string    `json:"group"`
 	Other            *LogOther `json:"other"`
+	// SkipChannelStats 排除非中继流量（渠道测试、违规费、失败任务），
+	// 否则渠道成功率会被这些记录单向抬高。
+	SkipChannelStats bool `json:"-"`
 }
 
 func RecordConsumeLog(c *gin.Context, userId int, params RecordConsumeLogParams) {
+	// 渠道统计不受消费日志开关影响。
+	if !params.SkipChannelStats && !common.GetContextKeyBool(c, constant.ContextKeyIsChannelTest) {
+		statInput, statCache := channelStatInputTokens(params.PromptTokens, params.Other)
+		AddChannelStat(params.ChannelId, 1, 0, statInput, statCache)
+	}
 	if !common.LogConsumeEnabled {
 		return
 	}

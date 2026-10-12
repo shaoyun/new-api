@@ -57,6 +57,9 @@ type Channel struct {
 
 	// cache info
 	Keys []string `json:"-" gorm:"-"`
+
+	// Stats 是近 24 小时的请求统计，仅渠道列表接口填充。
+	Stats *ChannelStatsSummary `json:"stats,omitempty" gorm:"-"`
 }
 
 const ChannelStatusReasonAllKeysDisabled = "All keys are disabled"

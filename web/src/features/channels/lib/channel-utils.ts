@@ -403,6 +403,34 @@ export function getResponseTimeConfig(timeMs: number) {
 }
 
 // ============================================================================
+// Channel Stats (last 24h)
+// ============================================================================
+
+type ChannelStats = NonNullable<Channel['stats']>
+
+/** Success ratio in [0, 1], or null when the channel had no traffic */
+export function getSuccessRate(stats: Channel['stats']): number | null {
+  if (!stats) return null
+  const total = stats.success + stats.fail
+  if (total <= 0) return null
+  return stats.success / total
+}
+
+/** Cache-read share of input tokens in [0, 1], or null without input */
+export function getCacheHitRate(stats: Channel['stats']): number | null {
+  if (!stats || stats.input_tokens <= 0) return null
+  return Math.min(stats.cache_tokens / stats.input_tokens, 1)
+}
+
+export function getSuccessRateVariant(
+  rate: number
+): 'success' | 'warning' | 'danger' {
+  if (rate >= 0.99) return 'success'
+  if (rate >= 0.95) return 'warning'
+  return 'danger'
+}
+
+// ============================================================================
 // Time Formatting
 // ============================================================================
 
@@ -661,6 +689,7 @@ export function aggregateChannelsByTag(
         created_time: 0,
         balance_updated_time: 0,
         models: '',
+        stats: null,
         children: [],
       } as TagRow
       tagMap.set(tag, tagRow)
@@ -678,6 +707,22 @@ export function aggregateChannelsByTag(
 
     // Aggregate used_quota (sum)
     tagRow.used_quota += channel.used_quota
+
+    // Aggregate stats (sum raw counts so rates are request-weighted)
+    if (channel.stats) {
+      const sum: ChannelStats = tagRow.stats ?? {
+        success: 0,
+        fail: 0,
+        input_tokens: 0,
+        cache_tokens: 0,
+      }
+      tagRow.stats = {
+        success: sum.success + channel.stats.success,
+        fail: sum.fail + channel.stats.fail,
+        input_tokens: sum.input_tokens + channel.stats.input_tokens,
+        cache_tokens: sum.cache_tokens + channel.stats.cache_tokens,
+      }
+    }
 
     // Aggregate response_time (average)
     tagRow.response_time =
