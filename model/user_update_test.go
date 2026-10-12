@@ -713,3 +713,17 @@ func TestUserEditPreservesDiscountUnlessUpdated(t *testing.T) {
 	edit(&zero)
 	assert.Equal(t, 0.0, readDiscount())
 }
+
+func TestUserEditRejectsInvalidDiscountUpdate(t *testing.T) {
+	setupUserUpdateTestState(t)
+	user := createUserBindTestUser(t)
+	require.NoError(t, DB.Model(&User{}).Where("id = ?", user.Id).Update("discount", 0.8).Error)
+
+	invalid := 1.5
+	edit := User{Id: user.Id, Username: user.Username, Group: user.Group, DiscountUpdate: &invalid}
+	require.Error(t, edit.Edit(false))
+
+	var stored User
+	require.NoError(t, DB.First(&stored, user.Id).Error)
+	assert.Equal(t, 0.8, stored.Discount)
+}

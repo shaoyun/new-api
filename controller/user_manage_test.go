@@ -641,3 +641,32 @@ func TestManageUserQuotaCacheUsesCommittedIntegerDifference(t *testing.T) {
 		})
 	}
 }
+
+func TestUpdateUserDiscount(t *testing.T) {
+	db := setupManageUserTestDB(t)
+	target := model.User{Username: "discount-user", Password: "discount-user-hash", Role: common.RoleCommonUser, Status: common.UserStatusEnabled, Group: "default", AuthVersion: 1, AffCode: "discount-user-aff", Discount: 0.5}
+	require.NoError(t, db.Create(&target).Error)
+
+	for _, tc := range []struct {
+		name         string
+		discountJSON string
+		wantSuccess  bool
+		wantStored   float64
+	}{
+		{name: "set discount", discountJSON: `,"discount":0.8`, wantSuccess: true, wantStored: 0.8},
+		{name: "absent discount keeps stored value", discountJSON: ``, wantSuccess: true, wantStored: 0.8},
+		{name: "out of range high", discountJSON: `,"discount":1.5`, wantStored: 0.8},
+		{name: "out of range negative", discountJSON: `,"discount":-0.1`, wantStored: 0.8},
+		{name: "one clears discount", discountJSON: `,"discount":1`, wantSuccess: true, wantStored: 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			body := fmt.Sprintf(`{"id":%d,"username":"discount-user","display_name":"Discount","group":"default"%s}`, target.Id, tc.discountJSON)
+			recorder := adminUserRequest(http.MethodPut, "/api/user/", body, "", service.AuthIdentity{UserID: 9999}, common.RoleAdminUser, nil, UpdateUser)
+			assert.Contains(t, recorder.Body.String(), fmt.Sprintf(`"success":%t`, tc.wantSuccess), recorder.Body.String())
+			var stored model.User
+			require.NoError(t, db.First(&stored, target.Id).Error)
+			assert.Equal(t, tc.wantStored, stored.Discount)
+			assert.EqualValues(t, 1, stored.AuthVersion)
+		})
+	}
+}

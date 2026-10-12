@@ -910,7 +910,11 @@ func (user *User) EditWithTx(tx *gorm.DB, updatePassword bool) error {
 		updates["password"] = newUser.Password
 	}
 	if newUser.DiscountUpdate != nil {
-		updates["discount"] = *newUser.DiscountUpdate
+		discount, err := NormalizeUserDiscount(*newUser.DiscountUpdate)
+		if err != nil {
+			return err
+		}
+		updates["discount"] = discount
 	}
 
 	current := User{}

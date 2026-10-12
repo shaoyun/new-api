@@ -3,6 +3,7 @@ package controller
 import (
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -648,10 +649,31 @@ func GetUserModels(c *gin.Context) {
 
 func UpdateUser(c *gin.Context) {
 	var updatedUser model.User
-	err := common.DecodeJson(c.Request.Body, &updatedUser)
+	body, err := io.ReadAll(c.Request.Body)
+	if err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	err = common.Unmarshal(body, &updatedUser)
 	if err != nil || updatedUser.Id == 0 {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
+	}
+	// discount is optional: only an explicitly submitted value updates the column.
+	var discountRequest struct {
+		Discount *float64 `json:"discount"`
+	}
+	if err := common.Unmarshal(body, &discountRequest); err != nil {
+		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
+		return
+	}
+	if discountRequest.Discount != nil {
+		discount, err := model.NormalizeUserDiscount(*discountRequest.Discount)
+		if err != nil {
+			common.ApiErrorI18n(c, i18n.MsgUserDiscountInvalid)
+			return
+		}
+		updatedUser.DiscountUpdate = &discount
 	}
 	updatedUser.Username = strings.TrimSpace(updatedUser.Username)
 	if updatedUser.Username == "" {
@@ -681,6 +703,10 @@ func UpdateUser(c *gin.Context) {
 	auditParams := map[string]any{
 		"username": originUser.Username,
 		"id":       updatedUser.Id,
+	}
+	if updatedUser.DiscountUpdate != nil && *updatedUser.DiscountUpdate != originUser.Discount {
+		auditParams["discount_old"] = originUser.Discount
+		auditParams["discount_new"] = *updatedUser.DiscountUpdate
 	}
 	// Resetting a password or rewriting the admin permission matrix changes what
 	// the managed account can do or who can sign in to it.
