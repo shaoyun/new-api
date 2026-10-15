@@ -128,7 +128,6 @@ func (user *User) ToBaseUser() *UserBase {
 		Setting:     user.Setting,
 		Email:       user.Email,
 		AuthVersion: user.AuthVersion,
-		Discount:    user.Discount,
 		CacheSchema: userCacheSchemaVersion,
 	}
 	return cache

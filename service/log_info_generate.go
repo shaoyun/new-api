@@ -108,7 +108,7 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 	other.SetPublic("cache_ratio", cacheRatio)
 	other.SetPublic("model_price", modelPrice)
 	other.SetPublic("user_group_ratio", userGroupRatio)
-	appendUserDiscount(other, relayInfo.UserDiscount)
+	appendGroupModelDiscount(other, relayInfo.PriceData.GroupRatioInfo)
 	other.SetPublic("frt", float64(relayInfo.FirstResponseTime.UnixMilli()-relayInfo.StartTime.UnixMilli()))
 	if relayInfo.ReasoningEffort != "" {
 		other.SetPublic("reasoning_effort", relayInfo.ReasoningEffort)
@@ -134,12 +134,17 @@ func GenerateTextOtherInfo(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, m
 	return other
 }
 
-// appendUserDiscount records the informational per-user discount. The logged
-// group ratios are already discounted, so this field must not be multiplied again.
-func appendUserDiscount(other *model.LogOther, discount float64) {
-	if discount = model.EffectiveUserDiscount(discount); discount < 1 {
-		other.SetPublic("user_discount", discount)
+// appendGroupModelDiscount splits a group-model discount out of the logged group
+// ratio: group_ratio becomes the true (undiscounted) ratio and the discount is
+// logged separately, so price × usage × group_ratio × group_model_discount
+// reproduces the charge. It must be called after group_ratio is written.
+func appendGroupModelDiscount(other *model.LogOther, info hosttypes.GroupRatioInfo) {
+	discount := model.EffectiveUserDiscount(info.GroupModelDiscount)
+	if discount >= 1 {
+		return
 	}
+	other.SetPublic("group_ratio", info.BaseGroupRatio)
+	other.SetPublic("group_model_discount", discount)
 }
 
 func AppendResponseModelLogInfo(relayInfo *relaycommon.RelayInfo, other *model.LogOther) {
@@ -334,7 +339,7 @@ func GenerateMjOtherInfo(relayInfo *relaycommon.RelayInfo, priceData hosttypes.P
 	if priceData.GroupRatioInfo.HasSpecialRatio {
 		other.SetPublic("user_group_ratio", priceData.GroupRatioInfo.GroupSpecialRatio)
 	}
-	appendUserDiscount(other, relayInfo.UserDiscount)
+	appendGroupModelDiscount(other, priceData.GroupRatioInfo)
 	appendRequestPath(nil, relayInfo, other)
 	return other
 }

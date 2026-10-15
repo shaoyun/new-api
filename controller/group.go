@@ -29,17 +29,10 @@ func GetUserGroups(c *gin.Context) {
 	userId := c.GetInt("id")
 	userGroup, _ = model.GetUserGroup(userId, false)
 	userUsableGroups := service.GetUserUsableGroups(userGroup)
-	discount := 1.0
-	if user, err := model.GetUserCache(userId); err == nil {
-		discount = model.EffectiveUserDiscount(user.Discount)
-	}
 	for groupName, _ := range ratio_setting.GetGroupRatioCopy() {
 		// UserUsableGroups contains the groups that the user can use
 		if desc, ok := userUsableGroups[groupName]; ok {
 			ratio := service.GetUserGroupRatio(userGroup, groupName)
-			if discount < 1 {
-				ratio = roundDiscountedDisplayRatio(ratio * discount)
-			}
 			usableGroups[groupName] = map[string]any{
 				"ratio": ratio,
 				"desc":  desc,

@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/constant"
-	"github.com/QuantumNous/new-api/relaykit/types"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -138,32 +137,6 @@ func TestTaskDurationBounds(t *testing.T) {
 			} else {
 				require.Nil(t, taskErr)
 			}
-		})
-	}
-}
-
-func TestGenRelayInfoUserDiscount(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-	tests := []struct {
-		name  string
-		set   bool
-		value float64
-		want  float64
-	}{
-		{"unset falls back to 1", false, 0, 1},
-		{"valid discount is kept", true, 0.8, 0.8},
-		{"out of range falls back to 1", true, 1.5, 1},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
-			ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
-			if tc.set {
-				ctx.Set(string(constant.ContextKeyUserDiscount), tc.value)
-			}
-			info, err := GenRelayInfo(ctx, types.RelayFormatOpenAI, nil, nil)
-			require.NoError(t, err)
-			assert.Equal(t, tc.want, info.UserDiscount)
 		})
 	}
 }

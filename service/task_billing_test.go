@@ -243,6 +243,41 @@ func TestTaskBillingOtherFiltersHistoricalOtherRatios(t *testing.T) {
 	assert.NotContains(t, other, "usage_facts")
 }
 
+func TestTaskBillingOtherGroupModelDiscount(t *testing.T) {
+	tests := []struct {
+		name             string
+		bc               model.TaskBillingContext
+		wantGroupRatio   float64
+		wantGroupModel   any
+		wantLegacyUserDc any
+	}{
+		{name: "group-model discount", bc: model.TaskBillingContext{GroupRatio: 0.8, BaseGroupRatio: 1, GroupModelDiscount: 0.8}, wantGroupRatio: 1, wantGroupModel: 0.8},
+		{name: "legacy PR6 task keeps old display", bc: model.TaskBillingContext{GroupRatio: 0.8, UserDiscount: 0.8}, wantGroupRatio: 0.8, wantLegacyUserDc: 0.8},
+		{name: "no discount", bc: model.TaskBillingContext{GroupRatio: 1.5}, wantGroupRatio: 1.5},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			task := makeTask(1, 1, 100, 0, BillingSourceWallet, 0)
+			bc := tc.bc
+			task.PrivateData.BillingContext = &bc
+
+			other := taskBillingOther(task).Snapshot()
+
+			assert.Equal(t, tc.wantGroupRatio, other["group_ratio"])
+			if tc.wantGroupModel != nil {
+				assert.Equal(t, tc.wantGroupModel, other["group_model_discount"])
+			} else {
+				assert.NotContains(t, other, "group_model_discount")
+			}
+			if tc.wantLegacyUserDc != nil {
+				assert.Equal(t, tc.wantLegacyUserDc, other["user_discount"])
+			} else {
+				assert.NotContains(t, other, "user_discount")
+			}
+		})
+	}
+}
+
 func TestTaskBillingOtherIncludesTieredSnapshotAndKeepsUsageFactsNested(t *testing.T) {
 	task := makeTask(1, 1, 100, 0, BillingSourceWallet, 0)
 	expression := `tier("720P", u("seconds") * 5)`
@@ -1076,13 +1111,15 @@ func TestRecalculate_AppliesSnapshottedUserDiscount(t *testing.T) {
 
 	const totalTokens = 3001
 	tests := []struct {
-		name         string
-		userDiscount float64
-		wantQuota    int
+		name               string
+		groupModelDiscount float64
+		userDiscount       float64
+		wantQuota          int
 	}{
-		{"snapshot without discount", 0, 3001},
-		{"snapshot with discount 0.5 truncates 1500.5", 0.5, 1500},
-		{"snapshot with invalid discount is ignored", 1.5, 3001},
+		{"snapshot without discount", 0, 0, 3001},
+		{"group-model discount 0.5 truncates 1500.5", 0.5, 0, 1500},
+		{"legacy user discount 0.5 (PR #6 task)", 0, 0.5, 1500},
+		{"invalid snapshot discounts are ignored", 1.5, 1.5, 3001},
 	}
 	for i, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -1095,6 +1132,7 @@ func TestRecalculate_AppliesSnapshottedUserDiscount(t *testing.T) {
 			seedChargedAccounting(t, userID, userID, userID, preConsumed, 1)
 
 			task := makeTask(userID, userID, preConsumed, userID, BillingSourceWallet, 0)
+			task.PrivateData.BillingContext.GroupModelDiscount = tc.groupModelDiscount
 			task.PrivateData.BillingContext.UserDiscount = tc.userDiscount
 
 			require.True(t, RecalculateTaskQuotaByTokens(context.Background(), task, totalTokens))

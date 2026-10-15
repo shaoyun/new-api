@@ -1516,30 +1516,51 @@ func TestAppendToolSurchargeLogInfoWritesOnlyStructuredFields(t *testing.T) {
 	assert.NotContains(t, fields, "image_generation_call_price")
 }
 
-func TestTextOtherInfoRecordsUserDiscount(t *testing.T) {
+func TestTextOtherInfoRecordsGroupModelDiscount(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
 	tests := []struct {
-		name     string
-		discount float64
-		want     bool
+		name          string
+		info          hosttypes.GroupRatioInfo
+		wantGroup     float64
+		wantDiscount  float64
+		wantDiscounts bool
 	}{
-		{name: "discount applied", discount: 0.8, want: true},
-		{name: "unset", discount: 0, want: false},
-		{name: "no discount", discount: 1, want: false},
+		{name: "hit", info: hosttypes.GroupRatioInfo{GroupRatio: 0.8, BaseGroupRatio: 1, GroupModelDiscount: 0.8}, wantGroup: 1, wantDiscount: 0.8, wantDiscounts: true},
+		{name: "miss", info: hosttypes.GroupRatioInfo{GroupRatio: 1.5, BaseGroupRatio: 1.5, GroupModelDiscount: 1}, wantGroup: 1.5},
+		{name: "zero value struct", info: hosttypes.GroupRatioInfo{GroupRatio: 1}, wantGroup: 1},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
-			relayInfo := &relaycommon.RelayInfo{ChannelMeta: &relaycommon.ChannelMeta{}, UserDiscount: tt.discount}
+			relayInfo := &relaycommon.RelayInfo{
+				ChannelMeta: &relaycommon.ChannelMeta{},
+				PriceData:   hosttypes.PriceData{GroupRatioInfo: tt.info},
+			}
 
-			other := GenerateTextOtherInfo(ctx, relayInfo, 1, 0.8, 1, 0, 0, 0, 0.8).Snapshot()
+			other := GenerateTextOtherInfo(ctx, relayInfo, 1, tt.info.GroupRatio, 1, 0, 0, 0, -1).Snapshot()
 
-			value, ok := other["user_discount"]
-			assert.Equal(t, tt.want, ok)
-			if tt.want {
-				assert.Equal(t, tt.discount, value)
+			assert.Equal(t, tt.wantGroup, other["group_ratio"])
+			assert.NotContains(t, other, "user_discount")
+			value, ok := other["group_model_discount"]
+			assert.Equal(t, tt.wantDiscounts, ok)
+			if tt.wantDiscounts {
+				assert.Equal(t, tt.wantDiscount, value)
 			}
 		})
 	}
+}
+
+func TestMjOtherInfoRecordsGroupModelDiscount(t *testing.T) {
+	priceData := hosttypes.PriceData{GroupRatioInfo: hosttypes.GroupRatioInfo{
+		GroupRatio: 0.8, BaseGroupRatio: 1, GroupModelDiscount: 0.8,
+		HasSpecialRatio: true, GroupSpecialRatio: 1,
+	}}
+
+	other := GenerateMjOtherInfo(&relaycommon.RelayInfo{}, priceData).Snapshot()
+
+	assert.Equal(t, 1.0, other["group_ratio"])
+	assert.Equal(t, 0.8, other["group_model_discount"])
+	assert.Equal(t, 1.0, other["user_group_ratio"])
+	assert.NotContains(t, other, "user_discount")
 }

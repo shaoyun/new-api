@@ -625,20 +625,22 @@ func executeTaskSubmissionWith(
 	task.PrivateData.SubscriptionId = relayInfo.SubscriptionId
 	task.PrivateData.TokenId = relayInfo.TokenId
 	task.PrivateData.NodeName = common.NodeName
-	// Store 0 for "no discount" so omitempty drops the field.
-	snapshotUserDiscount := relayInfo.UserDiscount
-	if snapshotUserDiscount >= 1 {
-		snapshotUserDiscount = 0
+	// 仅命中分组+模型折扣时快照真实倍率与折扣；未命中留 0，omitempty 丢弃。
+	var snapshotBaseGroupRatio, snapshotGroupModelDiscount float64
+	if discount := model.EffectiveUserDiscount(relayInfo.PriceData.GroupRatioInfo.GroupModelDiscount); discount < 1 {
+		snapshotBaseGroupRatio = relayInfo.PriceData.GroupRatioInfo.BaseGroupRatio
+		snapshotGroupModelDiscount = discount
 	}
 	task.PrivateData.BillingContext = &model.TaskBillingContext{
-		ModelPrice:      relayInfo.PriceData.ModelPrice,
-		GroupRatio:      relayInfo.PriceData.GroupRatioInfo.GroupRatio,
-		ModelRatio:      relayInfo.PriceData.ModelRatio,
-		OtherRatios:     relayInfo.PriceData.OtherRatios(),
-		OriginModelName: relayInfo.OriginModelName,
-		PerCallBilling:  common.StringsContains(constant.TaskPricePatches, relayInfo.OriginModelName) || relayInfo.PriceData.UsePrice,
-		TieredSnapshot:  relayInfo.TieredBillingSnapshot,
-		UserDiscount:    snapshotUserDiscount,
+		ModelPrice:         relayInfo.PriceData.ModelPrice,
+		GroupRatio:         relayInfo.PriceData.GroupRatioInfo.GroupRatio,
+		ModelRatio:         relayInfo.PriceData.ModelRatio,
+		OtherRatios:        relayInfo.PriceData.OtherRatios(),
+		OriginModelName:    relayInfo.OriginModelName,
+		PerCallBilling:     common.StringsContains(constant.TaskPricePatches, relayInfo.OriginModelName) || relayInfo.PriceData.UsePrice,
+		TieredSnapshot:     relayInfo.TieredBillingSnapshot,
+		BaseGroupRatio:     snapshotBaseGroupRatio,
+		GroupModelDiscount: snapshotGroupModelDiscount,
 	}
 	task.Quota = result.Quota
 	task.Data = result.TaskData
