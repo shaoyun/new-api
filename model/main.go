@@ -40,6 +40,13 @@ func jsonScanBytes(value any) []byte {
 	}
 }
 
+// RefreshColumnQuoting recomputes the dialect-specific quoting of reserved-word
+// columns. InitDB/InitLogDB already do this at startup; tests that switch the
+// database type after the fact must call it too.
+func RefreshColumnQuoting() {
+	initCol()
+}
+
 func initCol() {
 	// init common column names
 	if common.UsingMainDatabase(common.DatabaseTypePostgreSQL) {
