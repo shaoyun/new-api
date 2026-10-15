@@ -84,6 +84,9 @@ func GetUserDiscountRuleMap(userId int) (map[string]map[string]float64, error) {
 
 // GetUserGroupModelDiscount 返回用户在指定分组、模型上的有效折扣。未命中、查询出错或存储值非法时返回 1（原价）。
 func GetUserGroupModelDiscount(userId int, group, modelName string) float64 {
+	if userId <= 0 {
+		return 1
+	}
 	ruleMap, err := GetUserDiscountRuleMap(userId)
 	if err != nil {
 		common.SysError(fmt.Sprintf("failed to load discount rules for user %d: %s", userId, err.Error()))

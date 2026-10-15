@@ -22,6 +22,7 @@ func TestUserDiscountRuleUpsertLookupDelete(t *testing.T) {
 	assert.Equal(t, 1.0, GetUserGroupModelDiscount(7, "default", "m-a")) // 分组不同
 	assert.Equal(t, 1.0, GetUserGroupModelDiscount(7, "vip", "m-c"))     // 模型不同
 	assert.Equal(t, 1.0, GetUserGroupModelDiscount(9, "vip", "m-a"))     // 无规则用户
+	assert.Equal(t, 1.0, GetUserGroupModelDiscount(0, "vip", "m-a"))     // 无用户（未登录/测试渠道）
 
 	rules, err := ListUserDiscountRules(7)
 	require.NoError(t, err)
