@@ -742,6 +742,53 @@ describe('per-user group-model discounts', () => {
     expect(screen.getByText('Input').parentElement).toHaveTextContent('$3')
   })
 
+  it('badges the discount of the group that sets the unfiltered card price, not the lowest factor', () => {
+    // A: 1 x 0.9 = 0.9 sets the price; B: 5 x 0.5 = 2.5 has the lower factor.
+    render(
+      <ModelCard
+        model={pricingModel({
+          enable_groups: ['a', 'b'],
+          group_ratio: { a: 0.9, b: 2.5 },
+          user_discounts: { a: 0.9, b: 0.5 },
+        })}
+        onClick={vi.fn()}
+      />
+    )
+    expect(screen.getByText('Input').parentElement).toHaveTextContent('$1.8')
+    expect(screen.getByText(/Discount/)).toHaveTextContent('Discount 0.9x')
+  })
+
+  it('shows no badge when the cheapest unfiltered group has no discount even if another group does', () => {
+    // A: 1 (no rule) sets the price; B: 3 x 0.5 = 1.5 is discounted but dearer.
+    render(
+      <ModelCard
+        model={pricingModel({
+          enable_groups: ['a', 'b'],
+          group_ratio: { a: 1, b: 1.5 },
+          user_discounts: { b: 0.5 },
+        })}
+        onClick={vi.fn()}
+      />
+    )
+    expect(screen.getByText('Input').parentElement).toHaveTextContent('$2')
+    expect(screen.queryByText(/Discount/)).not.toBeInTheDocument()
+  })
+
+  it('prefers the discounted group when an undiscounted group ties on the unfiltered card price', () => {
+    // A: 1 (no rule) ties with B: 2 x 0.5 = 1; the discounted group wins.
+    render(
+      <ModelCard
+        model={pricingModel({
+          enable_groups: ['a', 'b'],
+          group_ratio: { a: 1, b: 1 },
+          user_discounts: { b: 0.5 },
+        })}
+        onClick={vi.fn()}
+      />
+    )
+    expect(screen.getByText(/Discount/)).toHaveTextContent('Discount 0.5x')
+  })
+
   it('prices the details group table from the model ratios and badges only discounted groups', () => {
     vi.spyOn(api, 'get').mockResolvedValue({ data: { data: { groups: [] } } })
     render(

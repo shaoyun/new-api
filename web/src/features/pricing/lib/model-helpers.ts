@@ -51,77 +51,76 @@ export function getConfiguredGroupRatio(
 }
 
 /**
- * Resolve the group ratio used by model square summary prices.
+ * Resolve the group whose ratio sets the model square summary price.
  *
  * When no specific group is selected, the model square shows the best price
- * available to the viewer. When a group filter is active, it shows that
- * group's price instead.
+ * available to the viewer (the enabled group with the lowest effective ratio).
+ * When a group filter is active, it shows that group's price instead. On a
+ * price tie the group the viewer has a discount for wins. Returns undefined
+ * when no group has a usable ratio.
+ */
+export function getDisplayGroup(
+  model: PricingModel,
+  selectedGroup?: string
+): string | undefined {
+  const modelEnableGroups = Array.isArray(model.enable_groups)
+    ? model.enable_groups
+    : []
+
+  if (
+    selectedGroup &&
+    selectedGroup !== FILTER_ALL &&
+    modelEnableGroups.includes(selectedGroup)
+  ) {
+    return selectedGroup
+  }
+
+  const groupRatio = model.group_ratio || {}
+  let displayGroup: string | undefined
+  let minRatio = Number.POSITIVE_INFINITY
+
+  for (const group of modelEnableGroups) {
+    const ratio = groupRatio[group]
+    if (typeof ratio !== 'number' || !Number.isFinite(ratio)) continue
+    const isCheaper = ratio < minRatio
+    const winsTie =
+      ratio === minRatio &&
+      model.user_discounts?.[group] !== undefined &&
+      displayGroup !== undefined &&
+      model.user_discounts[displayGroup] === undefined
+    if (isCheaper || winsTie) {
+      minRatio = ratio
+      displayGroup = group
+    }
+  }
+
+  return displayGroup
+}
+
+/**
+ * Resolve the group ratio used by model square summary prices.
  */
 export function getDisplayGroupRatio(
   model: PricingModel,
   selectedGroup?: string
 ): number {
-  const modelEnableGroups = Array.isArray(model.enable_groups)
-    ? model.enable_groups
-    : []
-  const groupRatio = model.group_ratio || {}
-
-  if (
-    selectedGroup &&
-    selectedGroup !== FILTER_ALL &&
-    modelEnableGroups.includes(selectedGroup)
-  ) {
-    return getConfiguredGroupRatio(groupRatio, selectedGroup)
-  }
-
-  if (modelEnableGroups.length === 0) {
-    return 1
-  }
-
-  let minRatio = Number.POSITIVE_INFINITY
-
-  for (const group of modelEnableGroups) {
-    const ratio = groupRatio[group]
-    if (
-      typeof ratio === 'number' &&
-      Number.isFinite(ratio) &&
-      ratio < minRatio
-    ) {
-      minRatio = ratio
-    }
-  }
-
-  return minRatio === Number.POSITIVE_INFINITY ? 1 : minRatio
+  const displayGroup = getDisplayGroup(model, selectedGroup)
+  if (displayGroup === undefined) return 1
+  return getConfiguredGroupRatio(model.group_ratio || {}, displayGroup)
 }
 
 /**
- * Resolve the viewer's discount shown on a model card.
- *
- * A selected group shows that group's discount; otherwise the best (lowest)
- * discount among the model's groups. Returns undefined when none applies.
+ * Resolve the viewer's discount for the group that sets the displayed price,
+ * so the badge always describes the price shown. Undefined when that group
+ * has no discount rule.
  */
 export function getDisplayGroupDiscount(
   model: PricingModel,
   selectedGroup?: string
 ): number | undefined {
-  const discounts = model.user_discounts
-  if (!discounts) return undefined
-
-  const modelEnableGroups = Array.isArray(model.enable_groups)
-    ? model.enable_groups
-    : []
-  if (
-    selectedGroup &&
-    selectedGroup !== FILTER_ALL &&
-    modelEnableGroups.includes(selectedGroup)
-  ) {
-    return discounts[selectedGroup]
-  }
-
-  const available = modelEnableGroups
-    .map((group) => discounts[group])
-    .filter((discount) => typeof discount === 'number')
-  return available.length > 0 ? Math.min(...available) : undefined
+  const displayGroup = getDisplayGroup(model, selectedGroup)
+  if (displayGroup === undefined) return undefined
+  return model.user_discounts?.[displayGroup]
 }
 
 /**
