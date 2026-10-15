@@ -337,6 +337,22 @@ func InitResources() error {
 		}
 	}
 	model.InitOptionMap()
+	// 清理旧的磁盘缓存文件
+	common.CleanupOldCacheFiles()
+
+	// Initialize SQL Database
+	err = model.InitLogDB()
+	if err != nil {
+		return err
+	}
+
+	// Initialize Redis
+	err = common.InitRedisClient()
+	if err != nil {
+		return err
+	}
+
+	// 必须在 InitRedisClient 之后：迁移成功后要清理该用户的规则缓存。
 	if common.IsMasterNode {
 		// 把旧的用户统一折扣展开为分组-模型规则，已迁移的用户 discount 为 0，重复执行无副作用。
 		err := model.MigrateLegacyUserDiscounts(func(userGroup string) []string {
@@ -351,21 +367,6 @@ func InitResources() error {
 		if err != nil {
 			common.SysError("failed to migrate legacy user discounts: " + err.Error())
 		}
-	}
-
-	// 清理旧的磁盘缓存文件
-	common.CleanupOldCacheFiles()
-
-	// Initialize SQL Database
-	err = model.InitLogDB()
-	if err != nil {
-		return err
-	}
-
-	// Initialize Redis
-	err = common.InitRedisClient()
-	if err != nil {
-		return err
 	}
 
 	perfmetrics.Init()

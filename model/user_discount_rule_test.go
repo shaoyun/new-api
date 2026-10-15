@@ -210,3 +210,31 @@ func TestMigrateLegacyUserDiscountsRetriesWhenNoRulesExpanded(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, map[string]map[string]float64{"default": {"m-a": 0.7}}, ruleMap)
 }
+
+// 启动时迁移早于 Redis 连接建立：RedisEnabled 默认为 true 但 RDB 仍为 nil，缓存失效不能 panic。
+func TestMigrateLegacyUserDiscountsBeforeRedisConnected(t *testing.T) {
+	setupUserUpdateTestState(t)
+	oldRDB := common.RDB
+	common.RDB = nil
+	common.RedisEnabled = true // setupUserUpdateTestState 的 Cleanup 会还原
+	t.Cleanup(func() { common.RDB = oldRDB })
+
+	require.NoError(t, DB.Create(&Ability{Group: "default", Model: "m-a", ChannelId: 1, Enabled: true}).Error)
+	user := User{
+		Username: "legacy-boot",
+		Password: "unused-password-hash",
+		Role:     common.RoleCommonUser,
+		Status:   common.UserStatusEnabled,
+		Group:    "default",
+		AffCode:  "legacy-boot-aff",
+		Discount: 0.8,
+	}
+	require.NoError(t, DB.Create(&user).Error)
+
+	require.NotPanics(t, func() {
+		require.NoError(t, MigrateLegacyUserDiscounts(func(string) []string { return []string{"default"} }))
+	})
+	counts, err := CountUserDiscountRules([]int{user.Id})
+	require.NoError(t, err)
+	assert.Equal(t, map[int]int64{user.Id: 1}, counts)
+}

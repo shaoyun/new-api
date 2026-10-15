@@ -36,7 +36,7 @@ func userDiscountRuleCacheKey(userId int) string {
 
 // InvalidateUserDiscountRuleCache 在规则变更后丢弃该用户的规则缓存。
 func InvalidateUserDiscountRuleCache(userId int) {
-	if !common.RedisEnabled {
+	if !common.RedisEnabled || common.RDB == nil {
 		return
 	}
 	if err := common.RedisDel(userDiscountRuleCacheKey(userId)); err != nil {
