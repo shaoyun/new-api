@@ -53,13 +53,29 @@ export function usePricingData(enabled = true) {
       const vendor = model.vendor_id
         ? vendorMap.get(model.vendor_id)
         : undefined
+      // The backend returns true group ratios plus the viewer's discounts.
+      // Fold this model's discounts into its own display ratios so every
+      // price derived from `model.group_ratio` is the discounted one.
+      const groupRatio = { ...data.group_ratio }
+      const modelDiscounts: Record<string, number> = {}
+      for (const [group, discounts] of Object.entries(
+        data.user_discounts ?? {}
+      )) {
+        const discount = discounts[model.model_name]
+        if (discount == null || groupRatio[group] == null) continue
+        modelDiscounts[group] = discount
+        // Round to drop float noise such as 0.9 * 0.8 = 0.7200000000000001.
+        groupRatio[group] = Math.round(groupRatio[group] * discount * 1e6) / 1e6
+      }
       return {
         ...model,
         key: model.model_name,
         vendor_name: vendor?.name,
         vendor_icon: vendor?.icon,
         vendor_description: vendor?.description,
-        group_ratio: data.group_ratio,
+        group_ratio: groupRatio,
+        user_discounts:
+          Object.keys(modelDiscounts).length > 0 ? modelDiscounts : undefined,
       }
     })
   }, [data])

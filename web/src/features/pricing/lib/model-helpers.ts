@@ -95,6 +95,36 @@ export function getDisplayGroupRatio(
 }
 
 /**
+ * Resolve the viewer's discount shown on a model card.
+ *
+ * A selected group shows that group's discount; otherwise the best (lowest)
+ * discount among the model's groups. Returns undefined when none applies.
+ */
+export function getDisplayGroupDiscount(
+  model: PricingModel,
+  selectedGroup?: string
+): number | undefined {
+  const discounts = model.user_discounts
+  if (!discounts) return undefined
+
+  const modelEnableGroups = Array.isArray(model.enable_groups)
+    ? model.enable_groups
+    : []
+  if (
+    selectedGroup &&
+    selectedGroup !== FILTER_ALL &&
+    modelEnableGroups.includes(selectedGroup)
+  ) {
+    return discounts[selectedGroup]
+  }
+
+  const available = modelEnableGroups
+    .map((group) => discounts[group])
+    .filter((discount) => typeof discount === 'number')
+  return available.length > 0 ? Math.min(...available) : undefined
+}
+
+/**
  * Replace model placeholder in endpoint path
  */
 export function replaceModelInPath(path: string, modelName: string): string {

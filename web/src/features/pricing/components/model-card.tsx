@@ -37,11 +37,15 @@ import {
   isUnconfiguredTaskUsageModel,
 } from '../lib/dynamic-price'
 import { parseTags } from '../lib/filters'
-import { isTokenBasedModel } from '../lib/model-helpers'
+import {
+  getDisplayGroupDiscount,
+  isTokenBasedModel,
+} from '../lib/model-helpers'
 import { formatPrice, formatRequestPrice } from '../lib/price'
 import { taskPriceLabel, taskUsageUnitLabel } from '../lib/task-price-display'
 import type { PricingModel, PriceType, TokenUnit } from '../types'
 import { ModelBillingModeBadge } from './model-billing-mode-badge'
+import { ModelDiscountBadge } from './model-discount-badge'
 import { ModelPerfBadge, type ModelPerfBadgeData } from './model-perf-badge'
 
 export interface ModelCardProps {
@@ -65,6 +69,7 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
   const tokenUnitLabel = tokenUnit === 'K' ? '1K' : '1M'
   const tags = parseTags(props.model.tags)
   const groups = props.model.enable_groups || []
+  const discount = getDisplayGroupDiscount(props.model, props.selectedGroup)
   const endpoints = props.model.supported_endpoint_types || []
   const modelIconKey = props.model.icon || props.model.vendor_icon
   const modelIcon = modelIconKey ? getLobeIcon(modelIconKey, 28) : null
@@ -317,7 +322,12 @@ export const ModelCard = memo(function ModelCard(props: ModelCardProps) {
           aria-label={t('Pricing')}
           className='mt-auto flex min-w-0 flex-col gap-1.5'
         >
-          <ModelBillingModeBadge model={props.model} appearance='caption' />
+          <div className='flex flex-wrap items-center gap-1.5'>
+            <ModelBillingModeBadge model={props.model} appearance='caption' />
+            {discount !== undefined && (
+              <ModelDiscountBadge discount={discount} />
+            )}
+          </div>
           {dynamicSummary?.providerCount && (
             <span className='text-muted-foreground text-xs break-words'>
               {t('{{count}} providers', {

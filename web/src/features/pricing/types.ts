@@ -78,7 +78,10 @@ export type PricingModel = {
   tags?: string
   supported_endpoint_types?: string[]
   key?: string
+  /** Display ratios for this model: true group ratio x the viewer's discount. */
   group_ratio?: Record<string, number>
+  /** The viewer's discount per group for this model, only for discounted groups. */
+  user_discounts?: Record<string, number>
   /** Billing mode (e.g. "tiered_expr") used to flag dynamic pricing */
   billing_mode?: string
   /** Raw expression describing dynamic / tiered billing */
@@ -127,6 +130,8 @@ export type PricingData = {
   data: PricingModel[]
   vendors: PricingVendor[]
   group_ratio: Record<string, number>
+  /** Viewer's discounts: group -> model -> factor in (0,1). Empty when anonymous. */
+  user_discounts?: Record<string, Record<string, number>>
   usable_group: Record<string, { desc: string; ratio: number }>
   supported_endpoint: Record<string, string>
   auto_groups: string[]
