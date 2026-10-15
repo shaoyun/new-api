@@ -232,3 +232,72 @@ describe('usage facts billing details', () => {
     expect(screen.getByText('Total Cost')).toBeInTheDocument()
   })
 })
+
+describe('group ratio and discount rows', () => {
+  const queryClients: QueryClient[] = []
+
+  beforeAll(() => {
+    i18next.addResourceBundle('en', 'translation', {
+      'User Exclusive Ratio': 'User Exclusive Ratio',
+      Discount: 'Discount',
+      'User discount': 'User discount',
+    })
+  })
+
+  afterEach(() => {
+    for (const queryClient of queryClients) queryClient.clear()
+    queryClients.length = 0
+  })
+
+  test('shows the true group ratio and the group-model discount as separate rows', () => {
+    queryClients.push(
+      renderDetails({ group_ratio: 1, group_model_discount: 0.8 })
+    )
+
+    expect(rowValue('Group Ratio')).toBe('1.0000x')
+    expect(rowValue('Discount')).toBe('0.8000x')
+    expect(screen.queryByText('User discount')).toBeNull()
+  })
+
+  test('shows the discount next to the user exclusive ratio when a special ratio applies', () => {
+    queryClients.push(
+      renderDetails({
+        group_ratio: 0.9,
+        user_group_ratio: 0.9,
+        group_model_discount: 0.5,
+      })
+    )
+
+    expect(rowValue('User Exclusive Ratio')).toBe('0.9000x')
+    expect(rowValue('Discount')).toBe('0.5000x')
+  })
+
+  test('keeps the legacy user discount row for logs whose group ratio already includes the discount', () => {
+    queryClients.push(renderDetails({ group_ratio: 0.8, user_discount: 0.8 }))
+
+    expect(rowValue('Group Ratio')).toBe('0.8000x')
+    expect(rowValue('User discount')).toBe('0.8000x')
+    expect(screen.queryByText('Discount')).toBeNull()
+  })
+
+  test('shows only the group-model discount when a log carries both discount fields', () => {
+    queryClients.push(
+      renderDetails({
+        group_ratio: 1,
+        group_model_discount: 0.8,
+        user_discount: 0.7,
+      })
+    )
+
+    expect(rowValue('Discount')).toBe('0.8000x')
+    expect(screen.queryByText('User discount')).toBeNull()
+  })
+
+  test('omits the discount row when the log has no discount', () => {
+    queryClients.push(renderDetails({ group_ratio: 1 }))
+
+    expect(rowValue('Group Ratio')).toBe('1.0000x')
+    expect(screen.queryByText('Discount')).toBeNull()
+    expect(screen.queryByText('User discount')).toBeNull()
+  })
+})

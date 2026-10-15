@@ -382,3 +382,33 @@ test.each(['missing schema', 'unsupported expression', 'unknown tier'])(
     expect(preview.textContent).toBe('Dynamic Pricing · No matching results')
   }
 )
+
+test.each([
+  {
+    name: 'a group-model discount adds a separate summary segment',
+    other: { group_ratio: 1, group_model_discount: 0.8 },
+    expected: 'Group Ratio 1x+1',
+  },
+  {
+    name: 'a legacy user discount keeps its extra summary segment',
+    other: { group_ratio: 0.8, user_discount: 0.8 },
+    expected: 'Group Ratio 0.8x+1',
+  },
+  {
+    name: 'a log without discount has no extra summary segment',
+    other: { group_ratio: 1 },
+    expected: 'Group Ratio 1x',
+  },
+  {
+    name: 'the discount leads the summary when there is no group ratio',
+    other: { group_model_discount: 0.8 },
+    expected: 'Discount 0.8x',
+  },
+  {
+    name: 'only the group-model discount is shown when both discount fields exist',
+    other: { group_model_discount: 0.8, user_discount: 0.7 },
+    expected: 'Discount 0.8x',
+  },
+])('$name', ({ other, expected }) => {
+  expect(renderPreview(other).textContent).toBe(expected)
+})
