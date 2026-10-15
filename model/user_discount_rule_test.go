@@ -189,7 +189,7 @@ func TestMigrateLegacyUserDiscounts(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, map[string]map[string]float64{
 		"default": {"m-a": 0.8},
-		"vip":     {"m-a": 0.9, "m-b": 0.8}, // 已有规则不被覆盖，禁用模型不展开
+		"vip":     {"m-a": 0.9, "m-b": 0.8, "m-off": 0.8}, // 已有规则不被覆盖，渠道被禁用的模型也要展开
 	}, ruleMap)
 
 	var reloadedA, reloadedC User
@@ -200,12 +200,37 @@ func TestMigrateLegacyUserDiscounts(t *testing.T) {
 
 	counts, err := CountUserDiscountRules([]int{userA.Id, userB.Id, userC.Id})
 	require.NoError(t, err)
-	assert.Equal(t, map[int]int64{userA.Id: 3}, counts)
+	assert.Equal(t, map[int]int64{userA.Id: 4}, counts)
 
 	require.NoError(t, MigrateLegacyUserDiscounts(usableGroups))
 	counts, err = CountUserDiscountRules([]int{userA.Id, userB.Id, userC.Id})
 	require.NoError(t, err)
-	assert.Equal(t, map[int]int64{userA.Id: 3}, counts)
+	assert.Equal(t, map[int]int64{userA.Id: 4}, counts)
+}
+
+// 升级时渠道恰好被自动禁用：只有禁用 ability 的分组仍要展开规则并清零 discount，否则用户永久丢失折扣。
+func TestMigrateLegacyUserDiscountsExpandsGroupWithOnlyDisabledAbilities(t *testing.T) {
+	setupUserUpdateTestState(t)
+	require.NoError(t, DB.Create(&Ability{Group: "default", Model: "m-off", ChannelId: 1, Enabled: false}).Error)
+	user := User{
+		Username: "legacy-off",
+		Password: "unused-password-hash",
+		Role:     common.RoleCommonUser,
+		Status:   common.UserStatusEnabled,
+		Group:    "default",
+		AffCode:  "legacy-off-aff",
+		Discount: 0.6,
+	}
+	require.NoError(t, DB.Create(&user).Error)
+
+	require.NoError(t, MigrateLegacyUserDiscounts(func(string) []string { return []string{"default"} }))
+
+	var reloaded User
+	require.NoError(t, DB.First(&reloaded, user.Id).Error)
+	assert.Equal(t, 0.0, reloaded.Discount)
+	ruleMap, err := GetUserDiscountRuleMap(user.Id)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]map[string]float64{"default": {"m-off": 0.6}}, ruleMap)
 }
 
 func TestMigrateLegacyUserDiscountsRetriesWhenNoRulesExpanded(t *testing.T) {
@@ -222,7 +247,7 @@ func TestMigrateLegacyUserDiscountsRetriesWhenNoRulesExpanded(t *testing.T) {
 	require.NoError(t, DB.Create(&user).Error)
 	usableGroups := func(string) []string { return []string{"default"} }
 
-	// 没有任何启用的 ability：不能清零折扣，否则用户永久丢失折扣。
+	// 没有任何 ability：不能清零折扣，否则用户永久丢失折扣。
 	require.NoError(t, MigrateLegacyUserDiscounts(usableGroups))
 	var reloaded User
 	require.NoError(t, DB.First(&reloaded, user.Id).Error)
@@ -240,6 +265,30 @@ func TestMigrateLegacyUserDiscountsRetriesWhenNoRulesExpanded(t *testing.T) {
 	ruleMap, err := GetUserDiscountRuleMap(user.Id)
 	require.NoError(t, err)
 	assert.Equal(t, map[string]map[string]float64{"default": {"m-a": 0.7}}, ruleMap)
+}
+
+// abilities 查询出错：该用户记入汇总错误且 discount 保持不变，下次启动重试。
+func TestMigrateLegacyUserDiscountsKeepsDiscountWhenAbilityQueryFails(t *testing.T) {
+	setupUserUpdateTestState(t)
+	user := User{
+		Username: "legacy-qerr",
+		Password: "unused-password-hash",
+		Role:     common.RoleCommonUser,
+		Status:   common.UserStatusEnabled,
+		Group:    "default",
+		AffCode:  "legacy-qerr-aff",
+		Discount: 0.5,
+	}
+	require.NoError(t, DB.Create(&user).Error)
+	require.NoError(t, DB.Migrator().DropTable(&Ability{}))
+	t.Cleanup(func() { require.NoError(t, DB.AutoMigrate(&Ability{})) })
+
+	err := MigrateLegacyUserDiscounts(func(string) []string { return []string{"default"} })
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "user")
+	var reloaded User
+	require.NoError(t, DB.First(&reloaded, user.Id).Error)
+	assert.Equal(t, 0.5, reloaded.Discount)
 }
 
 // 启动时迁移早于 Redis 连接建立：RedisEnabled 默认为 true 但 RDB 仍为 nil，缓存失效不能 panic。

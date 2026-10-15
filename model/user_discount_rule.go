@@ -205,7 +205,7 @@ func CountUserDiscountRules(userIds []int) (map[int]int64, error) {
 	return counts, nil
 }
 
-// MigrateLegacyUserDiscounts 把 users.discount 中的统一折扣展开为 (可用分组 × 该分组已启用模型) 的规则，
+// MigrateLegacyUserDiscounts 把 users.discount 中的统一折扣展开为 (可用分组 × 该分组全部 ability 模型，不论渠道是否启用) 的规则，
 // 然后将 users.discount 清零（列保留以便回滚）。已存在的规则不会被覆盖；discount 不在 (0,1) 内的用户不处理。
 // usableGroups 由调用方提供（model 不能依赖 service），返回用户所属分组可用的分组名。
 // 单个用户失败只记录并继续，最终返回汇总错误。重复执行是幂等的。
@@ -227,6 +227,7 @@ func MigrateLegacyUserDiscounts(usableGroups func(userGroup string) []string) er
 
 		now := common.GetTimestamp()
 		var rules []UserDiscountRule
+		var queryErr error
 		seen := make(map[[2]string]struct{})
 		for _, group := range groups {
 			if group == "auto" {
@@ -234,8 +235,12 @@ func MigrateLegacyUserDiscounts(usableGroups func(userGroup string) []string) er
 			}
 			models, ok := modelsByGroup[group]
 			if !ok {
-				models = GetGroupEnabledModels(group)
-				// 空结果可能是查询瞬时失败（GetGroupEnabledModels 吞掉了错误），不缓存，让后续用户重新查询。
+				// 不按 enabled 过滤：升级瞬间被自动禁用或手动关闭的渠道，其模型也要展开，否则该客户之后永久按原价计费。
+				if err := DB.Model(&Ability{}).Where(commonGroupCol+" = ?", group).Distinct("model").Pluck("model", &models).Error; err != nil {
+					queryErr = fmt.Errorf("list models of group %q: %w", group, err)
+					break
+				}
+				// 空结果不缓存，让后续用户重新查询。
 				if len(models) > 0 {
 					modelsByGroup[group] = models
 				}
@@ -258,9 +263,16 @@ func MigrateLegacyUserDiscounts(usableGroups func(userGroup string) []string) er
 			}
 		}
 
+		if queryErr != nil {
+			// 查询失败时不清零 discount，下次启动重试。
+			common.SysError(fmt.Sprintf("failed to migrate legacy discount for user %d: %s", user.Id, queryErr.Error()))
+			errs = append(errs, fmt.Errorf("user %d: %w", user.Id, queryErr))
+			continue
+		}
+
 		if len(rules) == 0 {
-			// 可能是 abilities 尚未就绪或查询瞬时失败；不清零 discount，下次启动重试，避免用户永久丢失折扣。
-			common.SysError(fmt.Sprintf("skip legacy discount migration for user %d: no enabled group-model to expand, will retry on next startup", user.Id))
+			// 可能是 abilities 尚未就绪；不清零 discount，下次启动重试，避免用户永久丢失折扣。
+			common.SysError(fmt.Sprintf("skip legacy discount migration for user %d: no group-model to expand, will retry on next startup", user.Id))
 			continue
 		}
 
