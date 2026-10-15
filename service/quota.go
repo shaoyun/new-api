@@ -118,7 +118,8 @@ func PreWssConsumeQuota(ctx *gin.Context, relayInfo *relaycommon.RelayInfo, usag
 	if ok {
 		actualGroupRatio = userGroupRatio
 	}
-	actualGroupRatio *= model.GetUserGroupModelDiscount(relayInfo.UserId, relayInfo.UsingGroup, modelName)
+	// 与 HandleGroupRatio 保持一致：先按计费名查规则，未命中再按原始模型名查
+	actualGroupRatio *= model.GetUserGroupModelDiscountWithFallback(relayInfo.UserId, relayInfo.UsingGroup, relayInfo.BillingModelName, relayInfo.OriginModelName)
 
 	quotaInfo := QuotaInfo{
 		InputDetails: TokenDetails{

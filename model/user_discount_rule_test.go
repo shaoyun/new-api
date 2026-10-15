@@ -82,6 +82,37 @@ func TestGetUserGroupModelDiscountIgnoresInvalidStoredValues(t *testing.T) {
 	}
 }
 
+func TestGetUserGroupModelDiscountWithFallback(t *testing.T) {
+	setupUserUpdateTestState(t)
+	require.NoError(t, UpsertUserDiscountRules(7, "vip", []string{"m-a-thinking"}, 0.8))
+	require.NoError(t, UpsertUserDiscountRules(7, "vip", []string{"m-b", "m-b-high"}, 0.9))
+	require.NoError(t, UpsertUserDiscountRules(7, "vip", []string{"m-b-high"}, 0.6))
+	require.NoError(t, DB.Create(&UserDiscountRule{UserId: 7, Group: "vip", Model: "m-bad", Discount: 1.5}).Error)
+
+	tests := []struct {
+		name   string
+		userId int
+		group  string
+		models []string
+		want   float64
+	}{
+		{"first name hits", 7, "vip", []string{"m-b", "m-b-high"}, 0.9},
+		{"first name misses, later name hits", 7, "vip", []string{"m-a", "m-a-thinking"}, 0.8},
+		{"empty names are skipped", 7, "vip", []string{"", "m-a-thinking"}, 0.8},
+		{"invalid stored value on first name falls through", 7, "vip", []string{"m-bad", "m-b-high"}, 0.6},
+		{"all names miss", 7, "vip", []string{"m-x", "m-y"}, 1},
+		{"other group does not match", 7, "default", []string{"m-a", "m-a-thinking"}, 1},
+		{"no names", 7, "vip", nil, 1},
+		{"user without rules", 9, "vip", []string{"m-a-thinking"}, 1},
+		{"no user", 0, "vip", []string{"m-a-thinking"}, 1},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, GetUserGroupModelDiscountWithFallback(tc.userId, tc.group, tc.models...))
+		})
+	}
+}
+
 func TestUserDiscountRuleCache(t *testing.T) {
 	setupUserUpdateTestState(t)
 	mr := miniredis.RunT(t)

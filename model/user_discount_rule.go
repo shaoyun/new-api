@@ -95,6 +95,29 @@ func GetUserGroupModelDiscount(userId int, group, modelName string) float64 {
 	return EffectiveUserDiscount(ruleMap[group][modelName])
 }
 
+// GetUserGroupModelDiscountWithFallback 按顺序用 modelNames 查找规则，返回第一条有效折扣；全部未命中返回 1（原价）。
+// 规则存放在 ability 模型名下（可能带 -thinking / -high 等后缀），而计费名会剥离这些后缀，
+// 所以调用方应先传计费名，再传原始模型名。空名字会被跳过，规则只加载一次。
+func GetUserGroupModelDiscountWithFallback(userId int, group string, modelNames ...string) float64 {
+	if userId <= 0 {
+		return 1
+	}
+	ruleMap, err := GetUserDiscountRuleMap(userId)
+	if err != nil {
+		common.SysError(fmt.Sprintf("failed to load discount rules for user %d: %s", userId, err.Error()))
+		return 1
+	}
+	for _, modelName := range modelNames {
+		if modelName == "" {
+			continue
+		}
+		if discount := EffectiveUserDiscount(ruleMap[group][modelName]); discount < 1 {
+			return discount
+		}
+	}
+	return 1
+}
+
 // ListUserDiscountRules 按分组、模型升序返回该用户的规则。
 func ListUserDiscountRules(userId int) ([]UserDiscountRule, error) {
 	var rules []UserDiscountRule

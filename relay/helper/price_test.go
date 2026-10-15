@@ -774,6 +774,10 @@ func TestHandleGroupRatioAppliesGroupModelDiscount(t *testing.T) {
 	require.NoError(t, model.UpsertUserDiscountRules(7, "vip", []string{"m-a"}, 0.8))
 	require.NoError(t, model.UpsertUserDiscountRules(7, "svip-target", []string{"m-a"}, 0.5))
 	require.NoError(t, model.UpsertUserDiscountRules(7, "fallback", []string{"m-a"}, 0.6))
+	// 规则存在 ability 模型名（后缀名）下，计费名被剥离为 m-a；m-b 两个名字都有规则。
+	require.NoError(t, model.UpsertUserDiscountRules(7, "vip", []string{"m-c-thinking"}, 0.7))
+	require.NoError(t, model.UpsertUserDiscountRules(7, "vip", []string{"m-d", "m-d-high"}, 0.9))
+	require.NoError(t, model.UpsertUserDiscountRules(7, "vip", []string{"m-d-high"}, 0.6))
 
 	tests := []struct {
 		name         string
@@ -792,6 +796,8 @@ func TestHandleGroupRatioAppliesGroupModelDiscount(t *testing.T) {
 		{"rule hit on group ratio", "default", "vip", "", "m-a", "", 1.2, 1.5, -1, false, 0.8},
 		{"rule hit on special ratio", "svip", "svip-target", "", "m-a", "", 0.45, 0.9, 0.9, true, 0.5},
 		{"matches billing model name", "default", "vip", "", "m-a-thinking", "m-a", 1.2, 1.5, -1, false, 0.8},
+		{"falls back to origin suffixed name", "default", "vip", "", "m-c-thinking", "m-c", 1.05, 1.5, -1, false, 0.7},
+		{"billing name rule wins over origin name", "default", "vip", "", "m-d-high", "m-d", 1.35, 1.5, -1, false, 0.9},
 		{"auto group uses fallback group rule", "default", "vip", "fallback", "m-a", "", 0.6, 1, -1, false, 0.6},
 	}
 	for _, tc := range tests {

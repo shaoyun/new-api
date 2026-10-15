@@ -67,7 +67,8 @@ func HandleGroupRatio(ctx *gin.Context, relayInfo *relaycommon.RelayInfo) hostty
 
 	// 折扣按 (用户, 分组, 模型) 规则解析，只作用于计费用的 GroupRatio；特殊倍率保持真实值
 	groupRatioInfo.BaseGroupRatio = groupRatioInfo.GroupRatio
-	discount := model.GetUserGroupModelDiscount(relayInfo.UserId, relayInfo.UsingGroup, relayInfo.GetBillingModelName())
+	// 规则按 ability 模型名存放，先按计费名查，未命中再按原始模型名（可能带推理后缀）查
+	discount := model.GetUserGroupModelDiscountWithFallback(relayInfo.UserId, relayInfo.UsingGroup, relayInfo.GetBillingModelName(), relayInfo.OriginModelName)
 	groupRatioInfo.GroupModelDiscount = discount
 	if discount < 1 {
 		groupRatioInfo.GroupRatio *= discount
