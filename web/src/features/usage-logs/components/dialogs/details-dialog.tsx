@@ -236,7 +236,18 @@ function BillingBreakdown(props: {
       value: `${formatRatio(effectiveGR)}x`,
     })
   }
-  if (other.user_discount != null && Number.isFinite(other.user_discount)) {
+  if (
+    other.group_model_discount != null &&
+    Number.isFinite(other.group_model_discount)
+  ) {
+    rows.push({
+      label: t('Discount'),
+      value: `${formatRatio(other.group_model_discount)}x`,
+    })
+  } else if (
+    other.user_discount != null &&
+    Number.isFinite(other.user_discount)
+  ) {
     rows.push({
       label: t('User discount'),
       value: `${formatRatio(other.user_discount)}x`,

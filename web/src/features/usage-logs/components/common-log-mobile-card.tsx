@@ -77,7 +77,10 @@ export function CommonLogMobileCard<TData>(props: {
     other?.user_group_ratio != null && other.user_group_ratio !== -1
       ? other.user_group_ratio
       : other?.group_ratio
-  const userDiscount = other?.user_discount
+  const groupModelDiscount = other?.group_model_discount
+  const hasGroupModelDiscount =
+    groupModelDiscount != null && Number.isFinite(groupModelDiscount)
+  const userDiscount = hasGroupModelDiscount ? undefined : other?.user_discount
   const fields: Record<FieldName, LogField> = {
     model: {
       label: t('Model'),
@@ -288,6 +291,11 @@ export function CommonLogMobileCard<TData>(props: {
                 {t('Group Ratio')}: {groupRatio}×
               </div>
             )}
+          {hasGroupModelDiscount && props.cells.has('token_name') && (
+            <div className='text-muted-foreground col-span-2 [overflow-wrap:anywhere]'>
+              {t('Discount')}: {formatRatioCompact(groupModelDiscount)}×
+            </div>
+          )}
           {userDiscount != null &&
             Number.isFinite(userDiscount) &&
             props.cells.has('token_name') && (

@@ -1,0 +1,320 @@
+package model
+
+import (
+	"math"
+	"testing"
+
+	"github.com/QuantumNous/new-api/common"
+	"github.com/alicebob/miniredis/v2"
+	"github.com/go-redis/redis/v8"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+)
+
+func TestUserDiscountRuleUpsertLookupDelete(t *testing.T) {
+	setupUserUpdateTestState(t)
+	require.NoError(t, UpsertUserDiscountRules(7, "vip", []string{"m-a", "m-b"}, 0.8))
+	require.NoError(t, UpsertUserDiscountRules(7, "vip", []string{"m-b"}, 0.9)) // 覆盖
+	require.NoError(t, UpsertUserDiscountRules(8, "vip", []string{"m-a"}, 0.5))
+
+	assert.Equal(t, 0.8, GetUserGroupModelDiscount(7, "vip", "m-a"))
+	assert.Equal(t, 0.9, GetUserGroupModelDiscount(7, "vip", "m-b"))
+	assert.Equal(t, 1.0, GetUserGroupModelDiscount(7, "default", "m-a")) // 分组不同
+	assert.Equal(t, 1.0, GetUserGroupModelDiscount(7, "vip", "m-c"))     // 模型不同
+	assert.Equal(t, 1.0, GetUserGroupModelDiscount(9, "vip", "m-a"))     // 无规则用户
+	assert.Equal(t, 1.0, GetUserGroupModelDiscount(0, "vip", "m-a"))     // 无用户（未登录/测试渠道）
+
+	rules, err := ListUserDiscountRules(7)
+	require.NoError(t, err)
+	require.Len(t, rules, 2)
+	assert.Equal(t, "m-a", rules[0].Model)
+	assert.Equal(t, "m-b", rules[1].Model)
+
+	ruleMap, err := GetUserDiscountRuleMap(7)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]map[string]float64{"vip": {"m-a": 0.8, "m-b": 0.9}}, ruleMap)
+
+	counts, err := CountUserDiscountRules([]int{7, 8, 9})
+	require.NoError(t, err)
+	assert.Equal(t, map[int]int64{7: 2, 8: 1}, counts)
+
+	other, err := ListUserDiscountRules(8)
+	require.NoError(t, err)
+	require.Len(t, other, 1)
+	n, err := DeleteUserDiscountRules(7, []int{rules[0].Id, other[0].Id}) // 跨用户 id 被忽略
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), n)
+	assert.Equal(t, 0.5, GetUserGroupModelDiscount(8, "vip", "m-a"))
+	assert.Equal(t, 1.0, GetUserGroupModelDiscount(7, "vip", "m-a"))
+}
+
+func TestUpsertUserDiscountRulesRejectsInvalidInput(t *testing.T) {
+	setupUserUpdateTestState(t)
+	for _, discount := range []float64{0, 1, 1.5, -0.2, math.NaN()} {
+		assert.Error(t, UpsertUserDiscountRules(7, "vip", []string{"m-a"}, discount))
+	}
+	assert.NoError(t, UpsertUserDiscountRules(7, "vip", nil, 0.5))
+	counts, err := CountUserDiscountRules([]int{7})
+	require.NoError(t, err)
+	assert.Empty(t, counts)
+}
+
+func TestGetUserGroupModelDiscountFallsBackOnError(t *testing.T) {
+	setupUserUpdateTestState(t)
+	require.NoError(t, DB.Migrator().DropTable(&UserDiscountRule{}))
+	t.Cleanup(func() { require.NoError(t, DB.AutoMigrate(&UserDiscountRule{})) })
+	assert.Equal(t, 1.0, GetUserGroupModelDiscount(7, "vip", "m-a"))
+}
+
+func TestGetUserGroupModelDiscountIgnoresInvalidStoredValues(t *testing.T) {
+	setupUserUpdateTestState(t)
+	for _, tc := range []struct {
+		model    string
+		discount float64
+	}{
+		{"too-high", 1.5},
+		{"zero", 0},
+		{"one", 1},
+		{"negative", -0.5},
+	} {
+		require.NoError(t, DB.Create(&UserDiscountRule{UserId: 7, Group: "vip", Model: tc.model, Discount: tc.discount}).Error)
+		assert.Equal(t, 1.0, GetUserGroupModelDiscount(7, "vip", tc.model), tc.model)
+	}
+}
+
+func TestGetUserGroupModelDiscountWithFallback(t *testing.T) {
+	setupUserUpdateTestState(t)
+	require.NoError(t, UpsertUserDiscountRules(7, "vip", []string{"m-a-thinking"}, 0.8))
+	require.NoError(t, UpsertUserDiscountRules(7, "vip", []string{"m-b", "m-b-high"}, 0.9))
+	require.NoError(t, UpsertUserDiscountRules(7, "vip", []string{"m-b-high"}, 0.6))
+	require.NoError(t, DB.Create(&UserDiscountRule{UserId: 7, Group: "vip", Model: "m-bad", Discount: 1.5}).Error)
+
+	tests := []struct {
+		name   string
+		userId int
+		group  string
+		models []string
+		want   float64
+	}{
+		{"first name hits", 7, "vip", []string{"m-b", "m-b-high"}, 0.9},
+		{"first name misses, later name hits", 7, "vip", []string{"m-a", "m-a-thinking"}, 0.8},
+		{"empty names are skipped", 7, "vip", []string{"", "m-a-thinking"}, 0.8},
+		{"invalid stored value on first name falls through", 7, "vip", []string{"m-bad", "m-b-high"}, 0.6},
+		{"all names miss", 7, "vip", []string{"m-x", "m-y"}, 1},
+		{"other group does not match", 7, "default", []string{"m-a", "m-a-thinking"}, 1},
+		{"no names", 7, "vip", nil, 1},
+		{"user without rules", 9, "vip", []string{"m-a-thinking"}, 1},
+		{"no user", 0, "vip", []string{"m-a-thinking"}, 1},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, GetUserGroupModelDiscountWithFallback(tc.userId, tc.group, tc.models...))
+		})
+	}
+}
+
+func TestUserDiscountRuleCache(t *testing.T) {
+	setupUserUpdateTestState(t)
+	mr := miniredis.RunT(t)
+	oldRDB := common.RDB
+	common.RDB = redis.NewClient(&redis.Options{Addr: mr.Addr(), MaxRetries: -1})
+	common.RedisEnabled = true // setupUserUpdateTestState 的 Cleanup 会还原
+	t.Cleanup(func() {
+		_ = common.RDB.Close()
+		common.RDB = oldRDB
+	})
+
+	assert.Equal(t, 1.0, GetUserGroupModelDiscount(9, "vip", "m-a"))
+	require.True(t, mr.Exists("user_discount_rules:9"))
+	cached, err := mr.Get("user_discount_rules:9")
+	require.NoError(t, err)
+	assert.Equal(t, "{}", cached)
+
+	require.NoError(t, UpsertUserDiscountRules(7, "vip", []string{"m-a"}, 0.8))
+	assert.Equal(t, 0.8, GetUserGroupModelDiscount(7, "vip", "m-a"))
+	require.True(t, mr.Exists("user_discount_rules:7"))
+
+	require.NoError(t, UpsertUserDiscountRules(7, "vip", []string{"m-a"}, 0.6))
+	assert.False(t, mr.Exists("user_discount_rules:7"))
+	assert.Equal(t, 0.6, GetUserGroupModelDiscount(7, "vip", "m-a"))
+
+	rules, err := ListUserDiscountRules(7)
+	require.NoError(t, err)
+	require.Len(t, rules, 1)
+	n, err := DeleteUserDiscountRules(7, []int{rules[0].Id})
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), n)
+	assert.False(t, mr.Exists("user_discount_rules:7"))
+	assert.Equal(t, 1.0, GetUserGroupModelDiscount(7, "vip", "m-a"))
+
+	// 缓存损坏时回源 DB
+	require.NoError(t, UpsertUserDiscountRules(7, "vip", []string{"m-a"}, 0.7))
+	require.NoError(t, mr.Set("user_discount_rules:7", "not-json"))
+	assert.Equal(t, 0.7, GetUserGroupModelDiscount(7, "vip", "m-a"))
+}
+
+func TestMigrateLegacyUserDiscounts(t *testing.T) {
+	setupUserUpdateTestState(t)
+	for _, ab := range []Ability{
+		{Group: "vip", Model: "m-a", ChannelId: 1, Enabled: true},
+		{Group: "vip", Model: "m-a", ChannelId: 2, Enabled: true}, // 同模型多渠道，只展开一次
+		{Group: "vip", Model: "m-b", ChannelId: 1, Enabled: true},
+		{Group: "vip", Model: "m-off", ChannelId: 1, Enabled: false},
+		{Group: "default", Model: "m-a", ChannelId: 1, Enabled: true},
+	} {
+		require.NoError(t, DB.Create(&ab).Error)
+	}
+	newUser := func(name string, discount float64) User {
+		user := User{
+			Username: name,
+			Password: "unused-password-hash",
+			Role:     common.RoleCommonUser,
+			Status:   common.UserStatusEnabled,
+			Group:    "default",
+			AffCode:  name + "-aff",
+			Discount: discount,
+		}
+		require.NoError(t, DB.Create(&user).Error)
+		return user
+	}
+	userA := newUser("legacy-a", 0.8)
+	userB := newUser("legacy-b", 0)
+	userC := newUser("legacy-c", 1.5)
+	require.NoError(t, UpsertUserDiscountRules(userA.Id, "vip", []string{"m-a"}, 0.9))
+
+	usableGroups := func(string) []string { return []string{"default", "vip", "auto"} }
+	require.NoError(t, MigrateLegacyUserDiscounts(usableGroups))
+
+	ruleMap, err := GetUserDiscountRuleMap(userA.Id)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]map[string]float64{
+		"default": {"m-a": 0.8},
+		"vip":     {"m-a": 0.9, "m-b": 0.8, "m-off": 0.8}, // 已有规则不被覆盖，渠道被禁用的模型也要展开
+	}, ruleMap)
+
+	var reloadedA, reloadedC User
+	require.NoError(t, DB.First(&reloadedA, userA.Id).Error)
+	assert.Equal(t, 0.0, reloadedA.Discount)
+	require.NoError(t, DB.First(&reloadedC, userC.Id).Error)
+	assert.Equal(t, 1.5, reloadedC.Discount)
+
+	counts, err := CountUserDiscountRules([]int{userA.Id, userB.Id, userC.Id})
+	require.NoError(t, err)
+	assert.Equal(t, map[int]int64{userA.Id: 4}, counts)
+
+	require.NoError(t, MigrateLegacyUserDiscounts(usableGroups))
+	counts, err = CountUserDiscountRules([]int{userA.Id, userB.Id, userC.Id})
+	require.NoError(t, err)
+	assert.Equal(t, map[int]int64{userA.Id: 4}, counts)
+}
+
+// 升级时渠道恰好被自动禁用：只有禁用 ability 的分组仍要展开规则并清零 discount，否则用户永久丢失折扣。
+func TestMigrateLegacyUserDiscountsExpandsGroupWithOnlyDisabledAbilities(t *testing.T) {
+	setupUserUpdateTestState(t)
+	require.NoError(t, DB.Create(&Ability{Group: "default", Model: "m-off", ChannelId: 1, Enabled: false}).Error)
+	user := User{
+		Username: "legacy-off",
+		Password: "unused-password-hash",
+		Role:     common.RoleCommonUser,
+		Status:   common.UserStatusEnabled,
+		Group:    "default",
+		AffCode:  "legacy-off-aff",
+		Discount: 0.6,
+	}
+	require.NoError(t, DB.Create(&user).Error)
+
+	require.NoError(t, MigrateLegacyUserDiscounts(func(string) []string { return []string{"default"} }))
+
+	var reloaded User
+	require.NoError(t, DB.First(&reloaded, user.Id).Error)
+	assert.Equal(t, 0.0, reloaded.Discount)
+	ruleMap, err := GetUserDiscountRuleMap(user.Id)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]map[string]float64{"default": {"m-off": 0.6}}, ruleMap)
+}
+
+func TestMigrateLegacyUserDiscountsRetriesWhenNoRulesExpanded(t *testing.T) {
+	setupUserUpdateTestState(t)
+	user := User{
+		Username: "legacy-retry",
+		Password: "unused-password-hash",
+		Role:     common.RoleCommonUser,
+		Status:   common.UserStatusEnabled,
+		Group:    "default",
+		AffCode:  "legacy-retry-aff",
+		Discount: 0.7,
+	}
+	require.NoError(t, DB.Create(&user).Error)
+	usableGroups := func(string) []string { return []string{"default"} }
+
+	// 没有任何 ability：不能清零折扣，否则用户永久丢失折扣。
+	require.NoError(t, MigrateLegacyUserDiscounts(usableGroups))
+	var reloaded User
+	require.NoError(t, DB.First(&reloaded, user.Id).Error)
+	assert.Equal(t, 0.7, reloaded.Discount)
+	counts, err := CountUserDiscountRules([]int{user.Id})
+	require.NoError(t, err)
+	assert.Empty(t, counts)
+
+	// ability 就绪后下次启动重试成功。
+	require.NoError(t, DB.Create(&Ability{Group: "default", Model: "m-a", ChannelId: 1, Enabled: true}).Error)
+	require.NoError(t, MigrateLegacyUserDiscounts(usableGroups))
+	var migrated User
+	require.NoError(t, DB.First(&migrated, user.Id).Error)
+	assert.Equal(t, 0.0, migrated.Discount)
+	ruleMap, err := GetUserDiscountRuleMap(user.Id)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]map[string]float64{"default": {"m-a": 0.7}}, ruleMap)
+}
+
+// abilities 查询出错：该用户记入汇总错误且 discount 保持不变，下次启动重试。
+func TestMigrateLegacyUserDiscountsKeepsDiscountWhenAbilityQueryFails(t *testing.T) {
+	setupUserUpdateTestState(t)
+	user := User{
+		Username: "legacy-qerr",
+		Password: "unused-password-hash",
+		Role:     common.RoleCommonUser,
+		Status:   common.UserStatusEnabled,
+		Group:    "default",
+		AffCode:  "legacy-qerr-aff",
+		Discount: 0.5,
+	}
+	require.NoError(t, DB.Create(&user).Error)
+	require.NoError(t, DB.Migrator().DropTable(&Ability{}))
+	t.Cleanup(func() { require.NoError(t, DB.AutoMigrate(&Ability{})) })
+
+	err := MigrateLegacyUserDiscounts(func(string) []string { return []string{"default"} })
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "user")
+	var reloaded User
+	require.NoError(t, DB.First(&reloaded, user.Id).Error)
+	assert.Equal(t, 0.5, reloaded.Discount)
+}
+
+// 启动时迁移早于 Redis 连接建立：RedisEnabled 默认为 true 但 RDB 仍为 nil，缓存失效不能 panic。
+func TestMigrateLegacyUserDiscountsBeforeRedisConnected(t *testing.T) {
+	setupUserUpdateTestState(t)
+	oldRDB := common.RDB
+	common.RDB = nil
+	common.RedisEnabled = true // setupUserUpdateTestState 的 Cleanup 会还原
+	t.Cleanup(func() { common.RDB = oldRDB })
+
+	require.NoError(t, DB.Create(&Ability{Group: "default", Model: "m-a", ChannelId: 1, Enabled: true}).Error)
+	user := User{
+		Username: "legacy-boot",
+		Password: "unused-password-hash",
+		Role:     common.RoleCommonUser,
+		Status:   common.UserStatusEnabled,
+		Group:    "default",
+		AffCode:  "legacy-boot-aff",
+		Discount: 0.8,
+	}
+	require.NoError(t, DB.Create(&user).Error)
+
+	require.NotPanics(t, func() {
+		require.NoError(t, MigrateLegacyUserDiscounts(func(string) []string { return []string{"default"} }))
+	})
+	counts, err := CountUserDiscountRules([]int{user.Id})
+	require.NoError(t, err)
+	assert.Equal(t, map[int]int64{user.Id: 1}, counts)
+}

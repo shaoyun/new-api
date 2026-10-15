@@ -326,7 +326,18 @@ function buildTypeDetailSegments(
           text: `${ratioLabel} ${formatRatioCompact(effectiveRatio)}x`,
         })
       }
-      if (other.user_discount != null && Number.isFinite(other.user_discount)) {
+      if (
+        other.group_model_discount != null &&
+        Number.isFinite(other.group_model_discount)
+      ) {
+        segments.push({
+          text: `${t('Discount')} ${formatRatioCompact(other.group_model_discount)}x`,
+          muted: true,
+        })
+      } else if (
+        other.user_discount != null &&
+        Number.isFinite(other.user_discount)
+      ) {
         segments.push({
           text: `${t('User discount')} ${formatRatioCompact(other.user_discount)}x`,
           muted: true,

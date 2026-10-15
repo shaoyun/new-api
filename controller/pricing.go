@@ -1,8 +1,8 @@
 package controller
 
 import (
+	"fmt"
 	"maps"
-	"math"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
@@ -36,12 +36,6 @@ func filterPricingByUsableGroups(pricing []model.Pricing, usableGroup map[string
 	return filtered
 }
 
-// roundDiscountedDisplayRatio trims float noise (0.9*0.8 = 0.7200000000000001)
-// from discounted ratios shown to users. Display only; billing keeps full precision.
-func roundDiscountedDisplayRatio(ratio float64) float64 {
-	return math.Round(ratio*1e6) / 1e6
-}
-
 func GetPricing(c *gin.Context) {
 	pricing := model.GetPricing()
 	userId, exists := c.Get("id")
@@ -49,6 +43,7 @@ func GetPricing(c *gin.Context) {
 	groupRatio := map[string]float64{}
 	maps.Copy(groupRatio, ratio_setting.GetGroupRatioCopy())
 	var group string
+	userDiscounts := map[string]map[string]float64{}
 	if exists {
 		user, err := model.GetUserCache(userId.(int))
 		if err == nil {
@@ -57,11 +52,6 @@ func GetPricing(c *gin.Context) {
 				ratio, ok := ratio_setting.GetGroupGroupRatio(group, g)
 				if ok {
 					groupRatio[g] = ratio
-				}
-			}
-			if discount := model.EffectiveUserDiscount(user.Discount); discount < 1 {
-				for g := range groupRatio {
-					groupRatio[g] = roundDiscountedDisplayRatio(groupRatio[g] * discount)
 				}
 			}
 		}
@@ -76,11 +66,24 @@ func GetPricing(c *gin.Context) {
 		}
 	}
 
+	if exists {
+		ruleMap, err := model.GetUserDiscountRuleMap(userId.(int))
+		if err != nil {
+			common.SysError(fmt.Sprintf("failed to load discount rules for user %d: %s", userId.(int), err.Error()))
+		}
+		for g, models := range ruleMap {
+			if _, ok := usableGroup[g]; ok && len(models) > 0 {
+				userDiscounts[g] = models
+			}
+		}
+	}
+
 	c.JSON(200, gin.H{
 		"success":            true,
 		"data":               pricing,
 		"vendors":            model.GetVendors(),
 		"group_ratio":        groupRatio,
+		"user_discounts":     userDiscounts,
 		"usable_group":       usableGroup,
 		"supported_endpoint": model.GetSupportedEndpointMap(),
 		"auto_groups":        service.GetUserAutoGroup(group),

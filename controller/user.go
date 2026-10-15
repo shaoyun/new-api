@@ -344,6 +344,7 @@ func GetAllUsers(c *gin.Context) {
 		return
 	}
 
+	fillDiscountRuleCounts(users)
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(users)
 
@@ -374,6 +375,7 @@ func SearchUsers(c *gin.Context) {
 		return
 	}
 
+	fillDiscountRuleCounts(users)
 	pageInfo.SetTotal(int(total))
 	pageInfo.SetItems(users)
 	common.ApiSuccess(c, pageInfo)
@@ -518,7 +520,6 @@ func buildSelfUserData(user *model.User) map[string]any {
 		"linux_do_id":       user.LinuxDOId,
 		"setting":           user.Setting,
 		"stripe_customer":   user.StripeCustomer,
-		"discount":          user.Discount,
 		"sidebar_modules":   userSetting.SidebarModules, // 正确提取sidebar_modules字段
 		"permissions":       permissions,
 	}
@@ -660,22 +661,6 @@ func UpdateUser(c *gin.Context) {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
 		return
 	}
-	// discount is optional: only an explicitly submitted value updates the column.
-	var discountRequest struct {
-		Discount *float64 `json:"discount"`
-	}
-	if err := common.Unmarshal(body, &discountRequest); err != nil {
-		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
-		return
-	}
-	if discountRequest.Discount != nil {
-		discount, err := model.NormalizeUserDiscount(*discountRequest.Discount)
-		if err != nil {
-			common.ApiErrorI18n(c, i18n.MsgUserDiscountInvalid)
-			return
-		}
-		updatedUser.DiscountUpdate = &discount
-	}
 	updatedUser.Username = strings.TrimSpace(updatedUser.Username)
 	if updatedUser.Username == "" {
 		common.ApiErrorI18n(c, i18n.MsgInvalidParams)
@@ -704,10 +689,6 @@ func UpdateUser(c *gin.Context) {
 	auditParams := map[string]any{
 		"username": originUser.Username,
 		"id":       updatedUser.Id,
-	}
-	if updatedUser.DiscountUpdate != nil && *updatedUser.DiscountUpdate != originUser.Discount {
-		auditParams["discount_old"] = originUser.Discount
-		auditParams["discount_new"] = *updatedUser.DiscountUpdate
 	}
 	// Resetting a password or rewriting the admin permission matrix changes what
 	// the managed account can do or who can sign in to it.

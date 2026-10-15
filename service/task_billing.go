@@ -61,7 +61,7 @@ func LogTaskConsumption(c *gin.Context, info *relaycommon.RelayInfo, task *model
 	if info.PriceData.GroupRatioInfo.HasSpecialRatio {
 		other.SetPublic("user_group_ratio", info.PriceData.GroupRatioInfo.GroupSpecialRatio)
 	}
-	appendUserDiscount(other, info.UserDiscount)
+	appendGroupModelDiscount(other, info.PriceData.GroupRatioInfo)
 	if info.IsModelMapped {
 		other.SetPublic("is_model_mapped", true)
 		other.SetPublic("upstream_model_name", info.UpstreamModelName)
@@ -156,7 +156,13 @@ func taskBillingOther(task *model.Task) *model.LogOther {
 			other.SetPublic("model_ratio", bc.ModelRatio)
 		}
 		other.SetPublic("group_ratio", bc.GroupRatio)
-		appendUserDiscount(other, bc.UserDiscount)
+		if discount := model.EffectiveUserDiscount(bc.GroupModelDiscount); discount < 1 {
+			other.SetPublic("group_ratio", bc.BaseGroupRatio)
+			other.SetPublic("group_model_discount", discount)
+		} else if legacy := model.EffectiveUserDiscount(bc.UserDiscount); legacy < 1 {
+			// PR #6 提交的旧任务只有统一折扣快照，保持旧展示。
+			other.SetPublic("user_discount", legacy)
+		}
 		if priceData := taskBillingContextPriceData(bc); priceData != nil {
 			for k, v := range priceData.OtherRatios() {
 				if !other.SetPublic(k, v) {
@@ -417,9 +423,9 @@ func RecalculateTaskQuotaByTokens(ctx context.Context, task *model.Task, totalTo
 	} else {
 		finalGroupRatio = groupRatio
 	}
-	// 使用提交时快照的用户折扣，不重新读取用户当前折扣
+	// 使用提交时快照的折扣，不重新读取当前规则；UserDiscount 仅旧任务携带，两者最多一个非 1。
 	if bc := task.PrivateData.BillingContext; bc != nil {
-		finalGroupRatio *= model.EffectiveUserDiscount(bc.UserDiscount)
+		finalGroupRatio *= model.EffectiveUserDiscount(bc.GroupModelDiscount) * model.EffectiveUserDiscount(bc.UserDiscount)
 	}
 
 	// 计算 OtherRatios 乘积（视频折扣、时长等）

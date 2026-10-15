@@ -32,6 +32,9 @@ import type {
   ManageUserAction,
   ManageUserQuotaPayload,
   ApiResponse,
+  UserDiscountRule,
+  UserDiscountOptions,
+  UpsertUserDiscountRulesPayload,
 } from './types'
 
 // A step-up proof is single-use, so the request carrying it must never be
@@ -265,5 +268,53 @@ export async function adminUnbindCustomOAuth(
     `/api/user/${userId}/oauth/bindings/${providerId}`,
     securityProofConfig(proofToken)
   )
+  return res.data
+}
+
+// ============================================================================
+// Admin Discount Rule APIs
+// ============================================================================
+
+/**
+ * List a user's (group, model) discount rules (admin)
+ */
+export async function getUserDiscountRules(
+  userId: number
+): Promise<ApiResponse<UserDiscountRule[]>> {
+  const res = await api.get(`/api/user/${userId}/discount_rules`)
+  return res.data
+}
+
+/**
+ * Groups the user can use and the enabled models in each, for picking rules (admin)
+ */
+export async function getUserDiscountOptions(
+  userId: number
+): Promise<ApiResponse<UserDiscountOptions>> {
+  const res = await api.get(`/api/user/${userId}/discount_options`)
+  return res.data
+}
+
+/**
+ * Create or overwrite discount rules for several models in one group (admin)
+ */
+export async function upsertUserDiscountRules(
+  userId: number,
+  payload: UpsertUserDiscountRulesPayload
+): Promise<ApiResponse<{ updated: number }>> {
+  const res = await api.put(`/api/user/${userId}/discount_rules`, payload)
+  return res.data
+}
+
+/**
+ * Delete discount rules by id (admin)
+ */
+export async function deleteUserDiscountRules(
+  userId: number,
+  ids: number[]
+): Promise<ApiResponse<{ deleted: number }>> {
+  const res = await api.delete(`/api/user/${userId}/discount_rules`, {
+    data: { ids },
+  })
   return res.data
 }

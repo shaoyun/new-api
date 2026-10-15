@@ -8,9 +8,11 @@ import (
 )
 
 type GroupRatioInfo struct {
-	GroupRatio        float64
-	GroupSpecialRatio float64
-	HasSpecialRatio   bool
+	GroupRatio         float64 // 计费用：BaseGroupRatio × GroupModelDiscount
+	GroupSpecialRatio  float64 // 真实特殊倍率（不含折扣），-1 表示无
+	HasSpecialRatio    bool
+	BaseGroupRatio     float64 // 真实分组倍率（特殊倍率或分组倍率）
+	GroupModelDiscount float64 // 有效折扣；0 或 1 均表示无折扣，读取时一律过 EffectiveUserDiscount
 }
 
 type PriceData struct {

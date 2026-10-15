@@ -169,7 +169,11 @@ type TaskBillingContext struct {
 	OriginModelName string                       `json:"origin_model_name,omitempty"` // 模型名称，必须为OriginModelName
 	PerCallBilling  bool                         `json:"per_call_billing,omitempty"`  // 按次计费：跳过轮询阶段的差额结算
 	TieredSnapshot  *billingexpr.BillingSnapshot `json:"tiered_snapshot,omitempty"`
-	UserDiscount    float64                      `json:"user_discount,omitempty"` // 提交时的用户折扣快照（有效值，缺省视为无折扣）
+	// BaseGroupRatio / GroupModelDiscount 仅在命中分组+模型折扣时写入：GroupRatio 为折后值，BaseGroupRatio 为真实分组倍率。
+	BaseGroupRatio     float64 `json:"base_group_ratio,omitempty"`
+	GroupModelDiscount float64 `json:"group_model_discount,omitempty"`
+	// UserDiscount 仅用于兼容旧版（统一折扣）提交的任务，新任务不再写入。
+	UserDiscount float64 `json:"user_discount,omitempty"`
 }
 
 // ResultRetrievable reports whether retrieval surfaces (native query routes,

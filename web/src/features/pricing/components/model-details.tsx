@@ -104,6 +104,7 @@ import { DynamicPricingBreakdown } from './dynamic-pricing-breakdown'
 import { ModelBillingModeBadge } from './model-billing-mode-badge'
 import { ModelDetailsApi } from './model-details-api'
 import { ModelDetailsPerformance } from './model-details-performance'
+import { ModelDiscountBadge } from './model-discount-badge'
 
 // ----------------------------------------------------------------------------
 // Local UI helpers
@@ -1056,6 +1057,9 @@ function ProviderGroupPricingSection(
 ) {
   const { t, i18n } = useTranslation()
   const showRechargePrice = props.showRechargePrice ?? false
+  // The model's own ratios already include the viewer's discounts.
+  const groupRatio = props.model.group_ratio ?? props.groupRatio
+  const userDiscounts = props.model.user_discounts
 
   const availableGroups = useMemo(
     () => getAvailableGroups(props.model, props.usableGroup || {}),
@@ -1167,7 +1171,7 @@ function ProviderGroupPricingSection(
     })
     const formattedPricesByGroup = new Map(
       availableGroups.map((group) => {
-        const ratio = props.groupRatio[group] || 1
+        const ratio = groupRatio[group] || 1
         return [
           group,
           getDynamicFormattedPricesByTier(dynamicTiers, {
@@ -1190,7 +1194,7 @@ function ProviderGroupPricingSection(
         <AutoGroupChain model={props.model} autoGroups={props.autoGroups} />
         <div className='space-y-3'>
           {availableGroups.map((group) => {
-            const ratio = props.groupRatio[group] || 1
+            const ratio = groupRatio[group] || 1
             const formattedPricesByTier =
               formattedPricesByGroup.get(group) ??
               new Map<DynamicPricingTier, Map<string, string>>()
@@ -1198,7 +1202,12 @@ function ProviderGroupPricingSection(
             return (
               <div key={group} className='overflow-hidden rounded-lg border'>
                 <div className='bg-muted/20 flex items-center justify-between gap-3 border-b px-3 py-2'>
-                  <GroupBadge group={group} size='sm' />
+                  <span className='flex min-w-0 flex-wrap items-center gap-1.5'>
+                    <GroupBadge group={group} size='sm' />
+                    {userDiscounts?.[group] !== undefined && (
+                      <ModelDiscountBadge discount={userDiscounts[group]} />
+                    )}
+                  </span>
                   <span className='text-muted-foreground font-mono text-xs'>
                     {ratio}x
                   </span>
@@ -1361,7 +1370,7 @@ function ProviderGroupPricingSection(
       showRechargePrice,
       props.priceRate,
       props.usdExchangeRate,
-      props.groupRatio
+      groupRatio
     )
   const renderFixedGroupPrice = (group: string) =>
     formatFixedPrice(
@@ -1370,7 +1379,7 @@ function ProviderGroupPricingSection(
       showRechargePrice,
       props.priceRate,
       props.usdExchangeRate,
-      props.groupRatio
+      groupRatio
     )
 
   return (
@@ -1389,14 +1398,21 @@ function ProviderGroupPricingSection(
             header: t('Group'),
             className: thClass,
             cellClassName: 'py-2.5',
-            cell: (group) => <GroupBadge group={group} size='sm' />,
+            cell: (group) => (
+              <span className='flex flex-wrap items-center gap-1.5'>
+                <GroupBadge group={group} size='sm' />
+                {userDiscounts?.[group] !== undefined && (
+                  <ModelDiscountBadge discount={userDiscounts[group]} />
+                )}
+              </span>
+            ),
           },
           {
             id: 'ratio',
             header: t('Ratio'),
             className: thClass,
             cellClassName: 'text-muted-foreground py-2.5 font-mono',
-            cell: (group) => `${props.groupRatio[group] || 1}x`,
+            cell: (group) => `${groupRatio[group] || 1}x`,
           },
           ...(isTokenBased
             ? [

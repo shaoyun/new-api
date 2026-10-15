@@ -22,7 +22,7 @@ import { useTranslation } from 'react-i18next'
 
 import { ActivityTimeCell } from '@/components/activity-time-cell'
 import { BadgeCell } from '@/components/data-table'
-import { GroupBadge, GroupMultiplierBadge } from '@/components/group-badge'
+import { GroupBadge } from '@/components/group-badge'
 import { LongText } from '@/components/long-text'
 import { StatusBadge } from '@/components/status-badge'
 import { TableId } from '@/components/table-id'
@@ -32,9 +32,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from '@/components/ui/tooltip'
-import { toIntlLocale } from '@/i18n/languages'
 import { getCurrencyDisplay } from '@/lib/currency'
-import { formatNumber, formatQuota } from '@/lib/format'
+import { formatQuota } from '@/lib/format'
 import { useSystemConfigStore } from '@/stores/system-config-store'
 
 import {
@@ -48,8 +47,7 @@ import { DataTableRowActions } from './data-table-row-actions'
 import { UserQuotaCell } from './user-quota-cell'
 
 export function useUsersColumns(): ColumnDef<User>[] {
-  const { t, i18n } = useTranslation()
-  const locale = toIntlLocale(i18n.resolvedLanguage || i18n.language)
+  const { t } = useTranslation()
   const currencyConfig = useSystemConfigStore((state) => state.config.currency)
   const { meta: currency } = getCurrencyDisplay()
   const quotaUnit = currency.kind === 'tokens' ? t('Tokens') : currency.symbol
@@ -201,29 +199,16 @@ export function useUsersColumns(): ColumnDef<User>[] {
         header: t('User Group'),
         cell: ({ row }) => {
           const group = row.getValue('group') as string
-          const discount = row.original.discount ?? 0
-          const discountLabel = `${formatNumber(discount, locale)}x`
+          const ruleCount = row.original.discount_rule_count ?? 0
           return (
             <BadgeCell>
               <GroupBadge group={group} className='font-normal' />
-              {discount > 0 && discount < 1 && (
-                <Tooltip>
-                  <TooltipTrigger
-                    render={
-                      <span
-                        role='img'
-                        tabIndex={0}
-                        aria-label={`${t('User discount')} ${discountLabel}`}
-                      />
-                    }
-                  >
-                    <GroupMultiplierBadge
-                      ratio={discount}
-                      label={discountLabel}
-                    />
-                  </TooltipTrigger>
-                  <TooltipContent>{t('User discount')}</TooltipContent>
-                </Tooltip>
+              {ruleCount > 0 && (
+                <StatusBadge
+                  label={t('{{count}} discount rules', { count: ruleCount })}
+                  variant='info'
+                  copyable={false}
+                />
               )}
             </BadgeCell>
           )
@@ -321,6 +306,6 @@ export function useUsersColumns(): ColumnDef<User>[] {
     ],
     // formatQuota reads the currency configuration from the store.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [t, locale, quotaUnit, currencyConfig]
+    [t, quotaUnit, currencyConfig]
   )
 }

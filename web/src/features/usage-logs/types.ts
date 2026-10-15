@@ -191,7 +191,9 @@ export interface LogOtherData {
   model_price?: number
   group_ratio?: number
   user_group_ratio?: number
-  // Informational only: group_ratio/user_group_ratio are already discounted
+  // Per-(group, model) discount; group_ratio/user_group_ratio stay undiscounted
+  group_model_discount?: number
+  // Legacy, informational only: group_ratio/user_group_ratio already include it
   user_discount?: number
   cache_ratio?: number
   cache_creation_ratio?: number

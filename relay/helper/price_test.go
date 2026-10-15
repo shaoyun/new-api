@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/QuantumNous/new-api/common"
+	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/pkg/billingexpr"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
@@ -18,8 +19,10 @@ import (
 	"github.com/QuantumNous/new-api/setting/operation_setting"
 	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/gin-gonic/gin"
+	"github.com/glebarez/sqlite"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func TestModelPriceHelperTieredUsesPreloadedRequestInput(t *testing.T) {
@@ -746,38 +749,79 @@ func (s *priceTestReservation) NeedsRefund() bool        { return false }
 func (s *priceTestReservation) GetPreConsumedQuota() int { return s.held }
 func (s *priceTestReservation) Reserve(quota int) error  { s.held = max(s.held, quota); return nil }
 
-func TestHandleGroupRatioAppliesUserDiscount(t *testing.T) {
+func TestHandleGroupRatioAppliesGroupModelDiscount(t *testing.T) {
 	previousGroupRatio := ratio_setting.GroupRatio2JSONString()
 	previousGroupGroupRatio := ratio_setting.GroupGroupRatio2JSONString()
+	previousDB := model.DB
+	previousRedisEnabled := common.RedisEnabled
 	t.Cleanup(func() {
 		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(previousGroupRatio))
 		require.NoError(t, ratio_setting.UpdateGroupGroupRatioByJSONString(previousGroupGroupRatio))
+		model.DB = previousDB
+		common.RedisEnabled = previousRedisEnabled
 	})
-	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1,"vip":1.5}`))
-	require.NoError(t, ratio_setting.UpdateGroupGroupRatioByJSONString(`{"svip":{"vip":0.9}}`))
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1,"vip":1.5,"svip-target":1,"fallback":1}`))
+	require.NoError(t, ratio_setting.UpdateGroupGroupRatioByJSONString(`{"svip":{"svip-target":0.9}}`))
+
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	sqlDB, err := db.DB()
+	require.NoError(t, err)
+	sqlDB.SetMaxOpenConns(1)
+	require.NoError(t, db.AutoMigrate(&model.UserDiscountRule{}))
+	model.DB = db
+	common.RedisEnabled = false
+	require.NoError(t, model.UpsertUserDiscountRules(7, "vip", []string{"m-a"}, 0.8))
+	require.NoError(t, model.UpsertUserDiscountRules(7, "svip-target", []string{"m-a"}, 0.5))
+	require.NoError(t, model.UpsertUserDiscountRules(7, "fallback", []string{"m-a"}, 0.6))
+	// 规则存在 ability 模型名（后缀名）下，计费名被剥离为 m-a；m-b 两个名字都有规则。
+	require.NoError(t, model.UpsertUserDiscountRules(7, "vip", []string{"m-c-thinking"}, 0.7))
+	require.NoError(t, model.UpsertUserDiscountRules(7, "vip", []string{"m-d", "m-d-high"}, 0.9))
+	require.NoError(t, model.UpsertUserDiscountRules(7, "vip", []string{"m-d-high"}, 0.6))
 
 	tests := []struct {
 		name         string
 		userGroup    string
 		usingGroup   string
-		userDiscount float64
+		autoGroup    string
+		originModel  string
+		billingModel string
 		wantRatio    float64
+		wantBase     float64
 		wantSpecial  float64
 		wantHas      bool
+		wantDiscount float64
 	}{
-		{"no discount", "default", "default", 1, 1, -1, false},
-		{"discount on group ratio", "default", "vip", 0.8, 1.2, -1, false},
-		{"discount on special ratio", "svip", "vip", 0.5, 0.45, 0.45, true},
-		{"unset discount leaves ratio unchanged", "default", "vip", 0, 1.5, -1, false},
+		{"rule miss", "default", "vip", "", "m-x", "", 1.5, 1.5, -1, false, 1},
+		{"rule hit on group ratio", "default", "vip", "", "m-a", "", 1.2, 1.5, -1, false, 0.8},
+		{"rule hit on special ratio", "svip", "svip-target", "", "m-a", "", 0.45, 0.9, 0.9, true, 0.5},
+		{"matches billing model name", "default", "vip", "", "m-a-thinking", "m-a", 1.2, 1.5, -1, false, 0.8},
+		{"falls back to origin suffixed name", "default", "vip", "", "m-c-thinking", "m-c", 1.05, 1.5, -1, false, 0.7},
+		{"billing name rule wins over origin name", "default", "vip", "", "m-d-high", "m-d", 1.35, 1.5, -1, false, 0.9},
+		{"auto group uses fallback group rule", "default", "vip", "fallback", "m-a", "", 0.6, 1, -1, false, 0.6},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
-			info := &relaycommon.RelayInfo{UserGroup: tc.userGroup, UsingGroup: tc.usingGroup, UserDiscount: tc.userDiscount}
+			if tc.autoGroup != "" {
+				ctx.Set("auto_group", tc.autoGroup)
+			}
+			info := &relaycommon.RelayInfo{
+				UserId:           7,
+				UserGroup:        tc.userGroup,
+				UsingGroup:       tc.usingGroup,
+				OriginModelName:  tc.originModel,
+				BillingModelName: tc.billingModel,
+			}
 			got := HandleGroupRatio(ctx, info)
 			assert.InDelta(t, tc.wantRatio, got.GroupRatio, 1e-9)
+			assert.InDelta(t, tc.wantBase, got.BaseGroupRatio, 1e-9)
 			assert.InDelta(t, tc.wantSpecial, got.GroupSpecialRatio, 1e-9)
 			assert.Equal(t, tc.wantHas, got.HasSpecialRatio)
+			assert.InDelta(t, tc.wantDiscount, got.GroupModelDiscount, 1e-9)
+			if tc.autoGroup != "" {
+				assert.Equal(t, tc.autoGroup, info.UsingGroup)
+			}
 		})
 	}
 }

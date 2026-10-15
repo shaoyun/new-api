@@ -4,7 +4,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"math"
 	"strconv"
 	"strings"
 
@@ -112,8 +111,8 @@ type User struct {
 	CreatedAt            int64                      `json:"created_at" gorm:"autoCreateTime;column:created_at"`
 	LastLoginAt          int64                      `json:"last_login_at" gorm:"default:0;column:last_login_at"`
 	AuthVersion          int64                      `json:"-" gorm:"type:bigint;not null;default:1;column:auth_version"`
-	Discount             float64                    `json:"discount" gorm:"default:0;column:discount"` // 用户折扣：(0,1) 为有效折扣，0 表示未设置
-	DiscountUpdate       *float64                   `json:"-" gorm:"-:all"`                            // 非 nil 时 EditWithTx 才更新 discount 列
+	Discount             float64                    `json:"-" gorm:"default:0;column:discount"` // 已废弃的统一折扣，迁移为分组+模型规则后置 0；列保留以便回滚
+	DiscountRuleCount    int64                      `json:"discount_rule_count" gorm:"-:all"`
 	AdminPermissions     map[string]map[string]bool `json:"admin_permissions,omitempty" gorm:"-:all"`
 }
 
@@ -128,7 +127,6 @@ func (user *User) ToBaseUser() *UserBase {
 		Setting:     user.Setting,
 		Email:       user.Email,
 		AuthVersion: user.AuthVersion,
-		Discount:    user.Discount,
 		CacheSchema: userCacheSchemaVersion,
 	}
 	return cache
@@ -140,17 +138,6 @@ func EffectiveUserDiscount(discount float64) float64 {
 		return discount
 	}
 	return 1
-}
-
-// NormalizeUserDiscount 校验管理员提交的折扣并返回存储值：必须是 [0,1] 内的有限数，1 归一化为 0（无折扣）。
-func NormalizeUserDiscount(discount float64) (float64, error) {
-	if math.IsNaN(discount) || math.IsInf(discount, 0) || discount < 0 || discount > 1 {
-		return 0, errors.New("discount must be a finite number between 0 and 1")
-	}
-	if discount == 1 {
-		return 0, nil
-	}
-	return discount, nil
 }
 
 // Deprecated: 旧版面板访问令牌，仅在升级后的过渡期内使用；删除 users.access_token 列时一并移除。
@@ -556,7 +543,7 @@ func GetSelfUserById(id int) (*User, error) {
 		"github_id", "discord_id", "oidc_id", "wechat_id", "telegram_id",
 		"group", "quota", "used_quota", "request_count", "aff_code", "aff_count",
 		"aff_quota", "aff_history", "inviter_id", "linux_do_id", "setting",
-		"stripe_customer", "auth_version", "discount",
+		"stripe_customer", "auth_version",
 		"CASE WHEN password <> '' THEN 1 ELSE 0 END AS has_password",
 	}).First(&profile, "id = ?", id).Error
 	profile.User.HasPassword = profile.HasPassword
@@ -908,13 +895,6 @@ func (user *User) EditWithTx(tx *gorm.DB, updatePassword bool) error {
 	}
 	if updatePassword {
 		updates["password"] = newUser.Password
-	}
-	if newUser.DiscountUpdate != nil {
-		discount, err := NormalizeUserDiscount(*newUser.DiscountUpdate)
-		if err != nil {
-			return err
-		}
-		updates["discount"] = discount
 	}
 
 	current := User{}

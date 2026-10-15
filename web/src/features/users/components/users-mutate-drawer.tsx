@@ -147,8 +147,8 @@ export function UsersMutateDrawer({
   // Load existing data when updating
   useEffect(() => {
     if (open && isUpdate && currentRow) {
-      // Seed from the list row so fields such as discount hold stored values
-      // before the fresh detail arrives, then fetch fresh data
+      // Seed from the list row so fields hold stored values before the
+      // fresh detail arrives, then fetch fresh data
       setDetailLoaded(false)
       form.reset(transformUserToFormDefaults(currentRow))
       getUser(currentRow.id)
@@ -442,42 +442,6 @@ export function UsersMutateDrawer({
                             placeholder={t('Select a group')}
                           />
                         </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name='discount'
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>{t('User discount')}</FormLabel>
-                        <FormControl>
-                          <Input
-                            type='number'
-                            inputMode='decimal'
-                            min={0}
-                            max={1}
-                            step='any'
-                            name={field.name}
-                            ref={field.ref}
-                            onBlur={field.onBlur}
-                            value={field.value ?? ''}
-                            onChange={(e) =>
-                              field.onChange(
-                                e.target.value === ''
-                                  ? undefined
-                                  : Number(e.target.value)
-                              )
-                            }
-                          />
-                        </FormControl>
-                        <FormDescription>
-                          {t(
-                            'Multiplier applied on top of the group ratio, e.g. 0.8 means 20% off. Leave empty for no discount.'
-                          )}
-                        </FormDescription>
                         <FormMessage />
                       </FormItem>
                     )}

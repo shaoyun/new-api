@@ -21,6 +21,7 @@ import {
   act,
   fireEvent,
   render,
+  renderHook,
   screen,
   waitFor,
   within,
@@ -38,7 +39,9 @@ import {
 import { CachedPriceCell } from '../components/cached-price-cell'
 import { ModelCard } from '../components/model-card'
 import { ModelCardGrid } from '../components/model-card-grid'
-import type { PricingModel } from '../types'
+import { ModelDetailsContent } from '../components/model-details'
+import { usePricingData } from '../hooks/use-pricing-data'
+import type { PricingData, PricingModel } from '../types'
 
 function pricingModel(overrides: Partial<PricingModel> = {}): PricingModel {
   return {
@@ -52,6 +55,8 @@ function pricingModel(overrides: Partial<PricingModel> = {}): PricingModel {
     ...overrides,
   }
 }
+
+vi.mock('@visactor/react-vchart', () => ({ VChart: () => null }))
 
 let queryClient: QueryClient
 const originalStorage = useSystemConfigStore.persist.getOptions().storage
@@ -615,5 +620,211 @@ describe('model cards', () => {
       expect(slot.classList.contains('bg-muted-foreground/15')).toBe(true)
     })
     vi.useRealTimers()
+  })
+})
+
+describe('per-user group-model discounts', () => {
+  function pricingPayload(overrides: Partial<PricingData> = {}): PricingData {
+    return {
+      success: true,
+      data: [
+        pricingModel({
+          id: 1,
+          model_name: 'm-a',
+          enable_groups: ['vip', 'default'],
+          group_ratio: undefined,
+        }),
+        pricingModel({
+          id: 2,
+          model_name: 'm-b',
+          enable_groups: ['vip', 'default'],
+          group_ratio: undefined,
+        }),
+      ],
+      vendors: [{ id: 1, name: 'Vendor' }],
+      group_ratio: { vip: 1.5, default: 1 },
+      usable_group: {
+        vip: { desc: 'VIP', ratio: 1.5 },
+        default: { desc: 'Default', ratio: 1 },
+      },
+      supported_endpoint: {},
+      auto_groups: [],
+      ...overrides,
+    }
+  }
+
+  async function loadModels(payload: PricingData) {
+    vi.spyOn(api, 'get').mockImplementation(async (url: string) => {
+      if (url === '/api/pricing') return { data: payload }
+      return { data: { success: true, data: {} } }
+    })
+    const { result } = renderHook(() => usePricingData(), {
+      wrapper: (props: { children: React.ReactNode }) => (
+        <QueryClientProvider client={queryClient}>
+          {props.children}
+        </QueryClientProvider>
+      ),
+    })
+    await waitFor(() => expect(result.current.models).toHaveLength(2))
+    return result.current
+  }
+
+  it('multiplies only the discounted model group ratio and keeps the global ratios true', async () => {
+    const pricing = await loadModels(
+      pricingPayload({ user_discounts: { vip: { 'm-a': 0.8 } } })
+    )
+    const [discounted, plain] = pricing.models
+    expect(discounted.group_ratio).toEqual({ vip: 1.2, default: 1 })
+    expect(discounted.user_discounts).toEqual({ vip: 0.8 })
+    expect(plain.group_ratio).toEqual({ vip: 1.5, default: 1 })
+    expect(plain.user_discounts).toBeUndefined()
+    expect(pricing.groupRatio).toEqual({ vip: 1.5, default: 1 })
+  })
+
+  it('removes float noise from the discounted ratio', async () => {
+    const pricing = await loadModels(
+      pricingPayload({
+        group_ratio: { vip: 0.9, default: 1 },
+        user_discounts: { vip: { 'm-a': 0.8 } },
+      })
+    )
+    expect(pricing.models[0].group_ratio?.vip).toBe(0.72)
+  })
+
+  it('keeps true ratios when the response has no user_discounts field', async () => {
+    const pricing = await loadModels(pricingPayload())
+    expect(pricing.models[0].group_ratio).toEqual({ vip: 1.5, default: 1 })
+    expect(pricing.models[0].user_discounts).toBeUndefined()
+  })
+
+  it('shows the selected group discounted price with a discount badge on the card', () => {
+    render(
+      <ModelCard
+        model={pricingModel({
+          enable_groups: ['vip', 'default'],
+          group_ratio: { vip: 1.2, default: 1 },
+          user_discounts: { vip: 0.8 },
+        })}
+        onClick={vi.fn()}
+        selectedGroup='vip'
+      />
+    )
+    expect(screen.getByText('Input').parentElement).toHaveTextContent('$2.4')
+    expect(screen.getByText(/Discount/)).toHaveTextContent('Discount 0.8x')
+  })
+
+  it('shows no discount badge on a card whose selected group has no discount', () => {
+    render(
+      <ModelCard
+        model={pricingModel({
+          enable_groups: ['vip', 'default'],
+          group_ratio: { vip: 1.5, default: 1 },
+          user_discounts: { vip: 0.8 },
+        })}
+        onClick={vi.fn()}
+        selectedGroup='default'
+      />
+    )
+    expect(screen.queryByText(/Discount/)).not.toBeInTheDocument()
+  })
+
+  it('shows no discount badge on a card for a model without discounts', () => {
+    render(
+      <ModelCard
+        model={pricingModel({
+          enable_groups: ['vip'],
+          group_ratio: { vip: 1.5 },
+        })}
+        onClick={vi.fn()}
+      />
+    )
+    expect(screen.queryByText(/Discount/)).not.toBeInTheDocument()
+    expect(screen.getByText('Input').parentElement).toHaveTextContent('$3')
+  })
+
+  it('badges the discount of the group that sets the unfiltered card price, not the lowest factor', () => {
+    // A: 1 x 0.9 = 0.9 sets the price; B: 5 x 0.5 = 2.5 has the lower factor.
+    render(
+      <ModelCard
+        model={pricingModel({
+          enable_groups: ['a', 'b'],
+          group_ratio: { a: 0.9, b: 2.5 },
+          user_discounts: { a: 0.9, b: 0.5 },
+        })}
+        onClick={vi.fn()}
+      />
+    )
+    expect(screen.getByText('Input').parentElement).toHaveTextContent('$1.8')
+    expect(screen.getByText(/Discount/)).toHaveTextContent('Discount 0.9x')
+  })
+
+  it('shows no badge when the cheapest unfiltered group has no discount even if another group does', () => {
+    // A: 1 (no rule) sets the price; B: 3 x 0.5 = 1.5 is discounted but dearer.
+    render(
+      <ModelCard
+        model={pricingModel({
+          enable_groups: ['a', 'b'],
+          group_ratio: { a: 1, b: 1.5 },
+          user_discounts: { b: 0.5 },
+        })}
+        onClick={vi.fn()}
+      />
+    )
+    expect(screen.getByText('Input').parentElement).toHaveTextContent('$2')
+    expect(screen.queryByText(/Discount/)).not.toBeInTheDocument()
+  })
+
+  it('prefers the discounted group when an undiscounted group ties on the unfiltered card price', () => {
+    // A: 1 (no rule) ties with B: 2 x 0.5 = 1; the discounted group wins.
+    render(
+      <ModelCard
+        model={pricingModel({
+          enable_groups: ['a', 'b'],
+          group_ratio: { a: 1, b: 1 },
+          user_discounts: { b: 0.5 },
+        })}
+        onClick={vi.fn()}
+      />
+    )
+    expect(screen.getByText(/Discount/)).toHaveTextContent('Discount 0.5x')
+  })
+
+  it('prices the details group table from the model ratios and badges only discounted groups', () => {
+    vi.spyOn(api, 'get').mockResolvedValue({ data: { data: { groups: [] } } })
+    render(
+      <QueryClientProvider client={queryClient}>
+        <ModelDetailsContent
+          model={pricingModel({
+            enable_groups: ['vip', 'default'],
+            group_ratio: { vip: 1.2, default: 1 },
+            user_discounts: { vip: 0.8 },
+          })}
+          groupRatio={{ vip: 1.5, default: 1 }}
+          usableGroup={{
+            vip: { desc: 'VIP', ratio: 1.5 },
+            default: { desc: 'Default', ratio: 1 },
+          }}
+          endpointMap={{}}
+          autoGroups={[]}
+          priceRate={1}
+          usdExchangeRate={1}
+          tokenUnit='M'
+        />
+      </QueryClientProvider>
+    )
+    const rows = screen.getAllByRole('row')
+    const vipRow = rows.find((row) =>
+      within(row).queryByText('vip')
+    ) as HTMLElement
+    const defaultRow = rows.find((row) =>
+      within(row).queryByText('default')
+    ) as HTMLElement
+    expect(vipRow).toHaveTextContent('1.2x')
+    expect(vipRow).toHaveTextContent('$2.4')
+    expect(within(vipRow).getByText(/Discount/)).toHaveTextContent(
+      'Discount 0.8x'
+    )
+    expect(defaultRow).toHaveTextContent('1x')
+    expect(within(defaultRow).queryByText(/Discount/)).not.toBeInTheDocument()
   })
 })
