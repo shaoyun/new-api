@@ -100,6 +100,8 @@ const (
 	MsgUserPasswordResetLinkInvalid  = "user.password_reset_link_invalid"
 	MsgUserInputInvalid              = "user.input_invalid"
 	MsgUserDiscountInvalid           = "user.discount_invalid"
+	MsgUserDiscountGroupInvalid      = "user.discount_group_invalid"
+	MsgUserDiscountModelsInvalid     = "user.discount_models_invalid"
 	MsgUserNoPermissionSameLevel     = "user.no_permission_same_level"
 	MsgUserNoPermissionHigherLevel   = "user.no_permission_higher_level"
 	MsgUserCannotCreateHigherLevel   = "user.cannot_create_higher_level"

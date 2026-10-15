@@ -68,7 +68,7 @@ func setupManageUserTestDB(t *testing.T) *gorm.DB {
 			}
 		}
 	})
-	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserSession{}, &model.CasbinRule{}, &model.AuthzRole{}, &model.AuthFlow{}, &model.TwoFA{}, &model.PasskeyCredential{}, &model.UserAccessToken{}))
+	require.NoError(t, db.AutoMigrate(&model.User{}, &model.UserSession{}, &model.CasbinRule{}, &model.AuthzRole{}, &model.AuthFlow{}, &model.TwoFA{}, &model.PasskeyCredential{}, &model.UserAccessToken{}, &model.UserDiscountRule{}, &model.Ability{}))
 	require.NoError(t, logDB.AutoMigrate(&model.Log{}, &model.AuditLog{}))
 	versionQuery := "SELECT version()"
 	if dialect == "sqlite" {
@@ -642,31 +642,185 @@ func TestManageUserQuotaCacheUsesCommittedIntegerDifference(t *testing.T) {
 	}
 }
 
-func TestUpdateUserDiscount(t *testing.T) {
-	db := setupManageUserTestDB(t)
-	target := model.User{Username: "discount-user", Password: "discount-user-hash", Role: common.RoleCommonUser, Status: common.UserStatusEnabled, Group: "default", AuthVersion: 1, AffCode: "discount-user-aff", Discount: 0.5}
-	require.NoError(t, db.Create(&target).Error)
+// discountRuleRequest drives one of the discount rule handlers as an operator with the given role.
+func discountRuleRequest(method string, targetId int, body string, role int, handler gin.HandlerFunc) (map[string]any, string) {
+	gin.SetMode(gin.TestMode)
+	recorder := adminUserRequest(method, "/api/user/discount_rules", body, "", service.AuthIdentity{UserID: 9999}, role,
+		gin.Params{{Key: "id", Value: strconv.Itoa(targetId)}}, handler)
+	var resp map[string]any
+	_ = common.Unmarshal(recorder.Body.Bytes(), &resp)
+	return resp, recorder.Body.String()
+}
 
-	for _, tc := range []struct {
-		name         string
-		discountJSON string
-		wantSuccess  bool
-		wantStored   float64
-	}{
-		{name: "set discount", discountJSON: `,"discount":0.8`, wantSuccess: true, wantStored: 0.8},
-		{name: "absent discount keeps stored value", discountJSON: ``, wantSuccess: true, wantStored: 0.8},
-		{name: "out of range high", discountJSON: `,"discount":1.5`, wantStored: 0.8},
-		{name: "out of range negative", discountJSON: `,"discount":-0.1`, wantStored: 0.8},
-		{name: "one clears discount", discountJSON: `,"discount":1`, wantSuccess: true, wantStored: 0},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			body := fmt.Sprintf(`{"id":%d,"username":"discount-user","display_name":"Discount","group":"default"%s}`, target.Id, tc.discountJSON)
-			recorder := adminUserRequest(http.MethodPut, "/api/user/", body, "", service.AuthIdentity{UserID: 9999}, common.RoleAdminUser, nil, UpdateUser)
-			assert.Contains(t, recorder.Body.String(), fmt.Sprintf(`"success":%t`, tc.wantSuccess), recorder.Body.String())
-			var stored model.User
-			require.NoError(t, db.First(&stored, target.Id).Error)
-			assert.Equal(t, tc.wantStored, stored.Discount)
-			assert.EqualValues(t, 1, stored.AuthVersion)
-		})
+func TestUserDiscountRuleAPI(t *testing.T) {
+	// ListUserDiscountRules and GetGroupEnabledModels build SQL from the package-level group column name.
+	initModelListColumnNames(t)
+	db := setupManageUserTestDB(t)
+	translate := func(key string) string {
+		c, _ := gin.CreateTestContext(httptest.NewRecorder())
+		c.Request = httptest.NewRequest(http.MethodGet, "/", nil)
+		return i18n.T(c, key)
 	}
+	target := model.User{Username: "rule-user", Password: "rule-user-hash", Role: common.RoleCommonUser, Status: common.UserStatusEnabled, Group: "default", AuthVersion: 1, AffCode: "rule-user-aff", Discount: 0.5}
+	other := model.User{Username: "rule-other", Password: "rule-other-hash", Role: common.RoleCommonUser, Status: common.UserStatusEnabled, Group: "default", AuthVersion: 1, AffCode: "rule-other-aff"}
+	peerAdmin := model.User{Username: "rule-admin", Password: "rule-admin-hash", Role: common.RoleAdminUser, Status: common.UserStatusEnabled, Group: "default", AuthVersion: 1, AffCode: "rule-admin-aff"}
+	require.NoError(t, db.Create(&target).Error)
+	require.NoError(t, db.Create(&other).Error)
+	require.NoError(t, db.Create(&peerAdmin).Error)
+	require.NoError(t, db.Create(&[]model.Ability{
+		{Group: "default", Model: "m-b", ChannelId: 1, Enabled: true},
+		{Group: "default", Model: "m-a", ChannelId: 1, Enabled: true},
+		{Group: "default", Model: "m-off", ChannelId: 2, Enabled: false},
+		{Group: "vip", Model: "m-v", ChannelId: 1, Enabled: true},
+	}).Error)
+
+	storedRules := func(userId int) []model.UserDiscountRule {
+		rules, err := model.ListUserDiscountRules(userId)
+		require.NoError(t, err)
+		return rules
+	}
+	put := func(body string) (map[string]any, string) {
+		return discountRuleRequest(http.MethodPut, target.Id, body, common.RoleAdminUser, PutUserDiscountRules)
+	}
+
+	t.Run("invalid discount", func(t *testing.T) {
+		for _, discount := range []string{`0`, `1`, `1.5`, `-0.1`, `"NaN"`} {
+			resp, raw := put(fmt.Sprintf(`{"group":"default","models":["m-a"],"discount":%s}`, discount))
+			assert.Equal(t, false, resp["success"], raw)
+			if discount != `"NaN"` {
+				assert.Equal(t, translate(i18n.MsgUserDiscountInvalid), resp["message"], raw)
+			}
+			assert.Empty(t, storedRules(target.Id), discount)
+		}
+	})
+
+	t.Run("invalid group", func(t *testing.T) {
+		for _, group := range []string{"auto", "not-usable", ""} {
+			resp, raw := put(fmt.Sprintf(`{"group":%q,"models":["m-a"],"discount":0.8}`, group))
+			assert.Equal(t, false, resp["success"], raw)
+			assert.Equal(t, translate(i18n.MsgUserDiscountGroupInvalid), resp["message"], raw)
+		}
+		assert.Empty(t, storedRules(target.Id))
+	})
+
+	t.Run("invalid models", func(t *testing.T) {
+		tooMany := make([]string, model.MaxUserDiscountRuleModels+1)
+		for i := range tooMany {
+			tooMany[i] = fmt.Sprintf("m-%d", i)
+		}
+		tooManyJSON, err := common.Marshal(tooMany)
+		require.NoError(t, err)
+		longName, err := common.Marshal([]string{strings.Repeat("x", 256)})
+		require.NoError(t, err)
+		for name, models := range map[string]string{
+			"empty": `[]`, "blank": `["", "  "]`, "too many": string(tooManyJSON), "too long": string(longName),
+		} {
+			resp, raw := put(fmt.Sprintf(`{"group":"default","models":%s,"discount":0.8}`, models))
+			assert.Equal(t, false, resp["success"], name+raw)
+			assert.Equal(t, translate(i18n.MsgUserDiscountModelsInvalid), resp["message"], name)
+		}
+		assert.Empty(t, storedRules(target.Id))
+	})
+
+	t.Run("upsert trims dedupes and overwrites", func(t *testing.T) {
+		resp, raw := put(`{"group":"default","models":[" m-a ","m-a"],"discount":0.8}`)
+		require.Equal(t, true, resp["success"], raw)
+		assert.Equal(t, map[string]any{"updated": float64(1)}, resp["data"])
+
+		resp, raw = discountRuleRequest(http.MethodGet, target.Id, "", common.RoleAdminUser, GetUserDiscountRules)
+		require.Equal(t, true, resp["success"], raw)
+		listed := resp["data"].([]any)
+		require.Len(t, listed, 1)
+		assert.Equal(t, "m-a", listed[0].(map[string]any)["model"])
+		assert.Equal(t, 0.8, listed[0].(map[string]any)["discount"])
+
+		resp, raw = put(`{"group":"default","models":["m-a"],"discount":0.6}`)
+		require.Equal(t, true, resp["success"], raw)
+		rules := storedRules(target.Id)
+		require.Len(t, rules, 1)
+		assert.Equal(t, 0.6, rules[0].Discount)
+	})
+
+	t.Run("delete is scoped to target user", func(t *testing.T) {
+		require.NoError(t, model.UpsertUserDiscountRules(other.Id, "default", []string{"m-a"}, 0.7))
+		otherRules := storedRules(other.Id)
+		require.Len(t, otherRules, 1)
+		mine := storedRules(target.Id)
+		require.Len(t, mine, 1)
+
+		resp, raw := discountRuleRequest(http.MethodDelete, target.Id, fmt.Sprintf(`{"ids":[%d,%d]}`, mine[0].Id, otherRules[0].Id), common.RoleAdminUser, DeleteUserDiscountRules)
+		require.Equal(t, true, resp["success"], raw)
+		assert.Equal(t, map[string]any{"deleted": float64(1)}, resp["data"])
+		assert.Empty(t, storedRules(target.Id))
+		assert.Len(t, storedRules(other.Id), 1)
+	})
+
+	t.Run("operator cannot manage same level user", func(t *testing.T) {
+		for method, handler := range map[string]gin.HandlerFunc{
+			http.MethodGet: GetUserDiscountRules, http.MethodPut: PutUserDiscountRules, http.MethodDelete: DeleteUserDiscountRules,
+		} {
+			resp, raw := discountRuleRequest(method, peerAdmin.Id, `{"group":"default","models":["m-a"],"discount":0.8,"ids":[1]}`, common.RoleAdminUser, handler)
+			assert.Equal(t, false, resp["success"], raw)
+			assert.Equal(t, translate(i18n.MsgUserNoPermissionHigherLevel), resp["message"], method)
+		}
+		assert.Empty(t, storedRules(peerAdmin.Id))
+	})
+
+	t.Run("discount options", func(t *testing.T) {
+		resp, raw := discountRuleRequest(http.MethodGet, target.Id, "", common.RoleAdminUser, GetUserDiscountOptions)
+		require.Equal(t, true, resp["success"], raw)
+		groups := resp["data"].(map[string]any)["groups"].([]any)
+		var names []string
+		byName := map[string]map[string]any{}
+		for _, g := range groups {
+			entry := g.(map[string]any)
+			names = append(names, entry["group"].(string))
+			byName[entry["group"].(string)] = entry
+		}
+		assert.NotContains(t, names, "auto")
+		assert.True(t, sort.StringsAreSorted(names), names)
+		require.Contains(t, byName, "default")
+		assert.Equal(t, []any{"m-a", "m-b"}, byName["default"]["models"])
+		assert.Equal(t, service.GetUserGroupRatio("default", "default"), byName["default"]["ratio"])
+		assert.Equal(t, service.GetUserUsableGroups("default")["default"], byName["default"]["desc"])
+	})
+
+	t.Run("update user ignores discount field", func(t *testing.T) {
+		body := fmt.Sprintf(`{"id":%d,"username":"rule-user","display_name":"Rule","group":"default","discount":0.8}`, target.Id)
+		recorder := adminUserRequest(http.MethodPut, "/api/user/", body, "", service.AuthIdentity{UserID: 9999}, common.RoleAdminUser, nil, UpdateUser)
+		assert.Contains(t, recorder.Body.String(), `"success":true`, recorder.Body.String())
+		var stored model.User
+		require.NoError(t, db.First(&stored, target.Id).Error)
+		assert.Equal(t, 0.5, stored.Discount)
+	})
+
+	t.Run("user lists carry discount_rule_count", func(t *testing.T) {
+		require.NoError(t, model.UpsertUserDiscountRules(target.Id, "default", []string{"m-a", "m-b"}, 0.9))
+		counts := func(path string, handler gin.HandlerFunc) map[string]float64 {
+			recorder := adminUserRequest(http.MethodGet, path, "", "", service.AuthIdentity{UserID: 9999}, common.RoleRootUser, nil, handler)
+			var resp struct {
+				Success bool `json:"success"`
+				Data    struct {
+					Items []map[string]any `json:"items"`
+				} `json:"data"`
+			}
+			require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &resp), recorder.Body.String())
+			require.True(t, resp.Success, recorder.Body.String())
+			result := map[string]float64{}
+			for _, item := range resp.Data.Items {
+				_, hasDiscount := item["discount"]
+				assert.False(t, hasDiscount, "legacy discount must not be serialized")
+				result[item["username"].(string)] = item["discount_rule_count"].(float64)
+			}
+			return result
+		}
+		for name, got := range map[string]map[string]float64{
+			"list":   counts("/api/user/?p=1&page_size=50", GetAllUsers),
+			"search": counts("/api/user/search?keyword=rule-&p=1&page_size=50", SearchUsers),
+		} {
+			assert.Equal(t, float64(2), got["rule-user"], name)
+			assert.Equal(t, float64(1), got["rule-other"], name)
+			assert.Equal(t, float64(0), got["rule-admin"], name)
+		}
+	})
 }
