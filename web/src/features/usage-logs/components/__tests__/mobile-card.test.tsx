@@ -343,19 +343,19 @@ it.each([
     name: 'shows the group-model discount as its own line',
     other: { group_ratio: 1, group_model_discount: 0.8 },
     shown: 'Discount: 0.8×',
-    hidden: 'User discount',
+    hidden: /User discount/,
   },
   {
     name: 'keeps the legacy user discount line',
     other: { group_ratio: 0.8, user_discount: 0.8 },
     shown: 'User discount: 0.8×',
-    hidden: 'Discount:',
+    hidden: /^Discount:/,
   },
   {
     name: 'shows only the group-model discount when both fields exist',
     other: { group_ratio: 1, group_model_discount: 0.8, user_discount: 0.7 },
     shown: 'Discount: 0.8×',
-    hidden: 'User discount',
+    hidden: /User discount/,
   },
 ])('mobile card $name', ({ other, shown, hidden }) => {
   renderLogs({ logs: [{ ...log, other: JSON.stringify(other) }] })
@@ -367,5 +367,5 @@ it('mobile card omits the discount line when the log has no discount', () => {
   renderLogs({
     logs: [{ ...log, other: JSON.stringify({ group_ratio: 1 }) }],
   })
-  expect(screen.queryByText(/Discount/)).not.toBeInTheDocument()
+  expect(screen.queryByText(/discount/i)).not.toBeInTheDocument()
 })
