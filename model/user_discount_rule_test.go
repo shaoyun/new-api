@@ -176,3 +176,37 @@ func TestMigrateLegacyUserDiscounts(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, map[int]int64{userA.Id: 3}, counts)
 }
+
+func TestMigrateLegacyUserDiscountsRetriesWhenNoRulesExpanded(t *testing.T) {
+	setupUserUpdateTestState(t)
+	user := User{
+		Username: "legacy-retry",
+		Password: "unused-password-hash",
+		Role:     common.RoleCommonUser,
+		Status:   common.UserStatusEnabled,
+		Group:    "default",
+		AffCode:  "legacy-retry-aff",
+		Discount: 0.7,
+	}
+	require.NoError(t, DB.Create(&user).Error)
+	usableGroups := func(string) []string { return []string{"default"} }
+
+	// 没有任何启用的 ability：不能清零折扣，否则用户永久丢失折扣。
+	require.NoError(t, MigrateLegacyUserDiscounts(usableGroups))
+	var reloaded User
+	require.NoError(t, DB.First(&reloaded, user.Id).Error)
+	assert.Equal(t, 0.7, reloaded.Discount)
+	counts, err := CountUserDiscountRules([]int{user.Id})
+	require.NoError(t, err)
+	assert.Empty(t, counts)
+
+	// ability 就绪后下次启动重试成功。
+	require.NoError(t, DB.Create(&Ability{Group: "default", Model: "m-a", ChannelId: 1, Enabled: true}).Error)
+	require.NoError(t, MigrateLegacyUserDiscounts(usableGroups))
+	var migrated User
+	require.NoError(t, DB.First(&migrated, user.Id).Error)
+	assert.Equal(t, 0.0, migrated.Discount)
+	ruleMap, err := GetUserDiscountRuleMap(user.Id)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]map[string]float64{"default": {"m-a": 0.7}}, ruleMap)
+}

@@ -212,7 +212,10 @@ func MigrateLegacyUserDiscounts(usableGroups func(userGroup string) []string) er
 			models, ok := modelsByGroup[group]
 			if !ok {
 				models = GetGroupEnabledModels(group)
-				modelsByGroup[group] = models
+				// 空结果可能是查询瞬时失败（GetGroupEnabledModels 吞掉了错误），不缓存，让后续用户重新查询。
+				if len(models) > 0 {
+					modelsByGroup[group] = models
+				}
 			}
 			for _, modelName := range models {
 				key := [2]string{group, modelName}
@@ -232,11 +235,15 @@ func MigrateLegacyUserDiscounts(usableGroups func(userGroup string) []string) er
 			}
 		}
 
+		if len(rules) == 0 {
+			// 可能是 abilities 尚未就绪或查询瞬时失败；不清零 discount，下次启动重试，避免用户永久丢失折扣。
+			common.SysError(fmt.Sprintf("skip legacy discount migration for user %d: no enabled group-model to expand, will retry on next startup", user.Id))
+			continue
+		}
+
 		err := DB.Transaction(func(tx *gorm.DB) error {
-			if len(rules) > 0 {
-				if err := tx.Clauses(clause.OnConflict{DoNothing: true}).CreateInBatches(&rules, 100).Error; err != nil {
-					return err
-				}
+			if err := tx.Clauses(clause.OnConflict{DoNothing: true}).CreateInBatches(&rules, 100).Error; err != nil {
+				return err
 			}
 			return tx.Model(&User{}).Where("id = ?", user.Id).Update("discount", 0).Error
 		})
