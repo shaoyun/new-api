@@ -1,18 +1,23 @@
 package service
 
 import (
+	"errors"
 	"math"
 	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/QuantumNous/new-api/common"
 	"github.com/QuantumNous/new-api/model"
 	relaycommon "github.com/QuantumNous/new-api/relay/common"
 	"github.com/QuantumNous/new-api/relaykit/dto"
 	"github.com/QuantumNous/new-api/relaykit/types"
+	"github.com/QuantumNous/new-api/setting/model_setting"
 	hosttypes "github.com/QuantumNous/new-api/types"
 
 	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -53,6 +58,68 @@ func TestCalcViolationFeeQuotaSaturates(t *testing.T) {
 	t.Cleanup(func() { common.QuotaPerUnit = oldQuotaPerUnit })
 
 	require.Equal(t, common.MaxQuota, calcViolationFeeQuota(1e20, 1))
+}
+
+// TestChargeViolationFeeLogsBaseGroupRatioAndDiscount verifies the violation-fee
+// consume log follows the same contract as other writers: group_ratio is the
+// true base ratio and group_model_discount is written only on a rule hit, while
+// the fee itself stays computed from the charged (discounted) ratio.
+func TestChargeViolationFeeLogsBaseGroupRatioAndDiscount(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	oldQuotaPerUnit := common.QuotaPerUnit
+	common.QuotaPerUnit = 500_000
+	t.Cleanup(func() { common.QuotaPerUnit = oldQuotaPerUnit })
+	settings := model_setting.GetGrokSettings()
+	oldSettings := *settings
+	settings.ViolationDeductionEnabled = true
+	settings.ViolationDeductionAmount = 0.05
+	t.Cleanup(func() { *settings = oldSettings })
+
+	tests := []struct {
+		name         string
+		info         hosttypes.GroupRatioInfo
+		wantGroup    float64
+		wantDiscount any
+		wantFee      int
+	}{
+		{name: "rule hit", info: hosttypes.GroupRatioInfo{GroupRatio: 0.8, BaseGroupRatio: 1, GroupModelDiscount: 0.8}, wantGroup: 1, wantDiscount: 0.8, wantFee: 20000},
+		{name: "no rule", info: hosttypes.GroupRatioInfo{GroupRatio: 1.5, BaseGroupRatio: 1.5, GroupModelDiscount: 1}, wantGroup: 1.5, wantFee: 37500},
+	}
+	for i, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			truncate(t)
+			userID := 60 + i
+			seedUser(t, userID, 1_000_000)
+			seedChannel(t, userID)
+			ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+			ctx.Request = httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil)
+			relayInfo := &relaycommon.RelayInfo{
+				UserId:          userID,
+				ChannelMeta:     &relaycommon.ChannelMeta{ChannelId: userID},
+				OriginModelName: "grok-test",
+				UsingGroup:      "default",
+				StartTime:       time.Now(),
+				PriceData:       hosttypes.PriceData{GroupRatioInfo: tc.info},
+			}
+			apiErr := types.NewErrorWithStatusCode(errors.New("violation"), types.ErrorCodeViolationFeeGrokCSAM, http.StatusBadRequest)
+
+			require.True(t, ChargeViolationFeeIfNeeded(ctx, relayInfo, apiErr))
+
+			log := getLastLog(t)
+			require.NotNil(t, log)
+			assert.Equal(t, tc.wantFee, log.Quota)
+			assert.Equal(t, 1_000_000-tc.wantFee, getUserQuota(t, userID))
+			other := map[string]any{}
+			require.NoError(t, common.UnmarshalJsonStr(log.Other, &other))
+			assert.Equal(t, true, other["violation_fee"])
+			assert.Equal(t, tc.wantGroup, other["group_ratio"])
+			if tc.wantDiscount != nil {
+				assert.Equal(t, tc.wantDiscount, other["group_model_discount"])
+			} else {
+				assert.NotContains(t, other, "group_model_discount")
+			}
+		})
+	}
 }
 
 func TestCalcOpenRouterCacheCreateTokensDoesNotWrap(t *testing.T) {
