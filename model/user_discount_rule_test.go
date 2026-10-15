@@ -121,3 +121,58 @@ func TestUserDiscountRuleCache(t *testing.T) {
 	require.NoError(t, mr.Set("user_discount_rules:7", "not-json"))
 	assert.Equal(t, 0.7, GetUserGroupModelDiscount(7, "vip", "m-a"))
 }
+
+func TestMigrateLegacyUserDiscounts(t *testing.T) {
+	setupUserUpdateTestState(t)
+	for _, ab := range []Ability{
+		{Group: "vip", Model: "m-a", ChannelId: 1, Enabled: true},
+		{Group: "vip", Model: "m-a", ChannelId: 2, Enabled: true}, // 同模型多渠道，只展开一次
+		{Group: "vip", Model: "m-b", ChannelId: 1, Enabled: true},
+		{Group: "vip", Model: "m-off", ChannelId: 1, Enabled: false},
+		{Group: "default", Model: "m-a", ChannelId: 1, Enabled: true},
+	} {
+		require.NoError(t, DB.Create(&ab).Error)
+	}
+	newUser := func(name string, discount float64) User {
+		user := User{
+			Username: name,
+			Password: "unused-password-hash",
+			Role:     common.RoleCommonUser,
+			Status:   common.UserStatusEnabled,
+			Group:    "default",
+			AffCode:  name + "-aff",
+			Discount: discount,
+		}
+		require.NoError(t, DB.Create(&user).Error)
+		return user
+	}
+	userA := newUser("legacy-a", 0.8)
+	userB := newUser("legacy-b", 0)
+	userC := newUser("legacy-c", 1.5)
+	require.NoError(t, UpsertUserDiscountRules(userA.Id, "vip", []string{"m-a"}, 0.9))
+
+	usableGroups := func(string) []string { return []string{"default", "vip", "auto"} }
+	require.NoError(t, MigrateLegacyUserDiscounts(usableGroups))
+
+	ruleMap, err := GetUserDiscountRuleMap(userA.Id)
+	require.NoError(t, err)
+	assert.Equal(t, map[string]map[string]float64{
+		"default": {"m-a": 0.8},
+		"vip":     {"m-a": 0.9, "m-b": 0.8}, // 已有规则不被覆盖，禁用模型不展开
+	}, ruleMap)
+
+	var reloadedA, reloadedC User
+	require.NoError(t, DB.First(&reloadedA, userA.Id).Error)
+	assert.Equal(t, 0.0, reloadedA.Discount)
+	require.NoError(t, DB.First(&reloadedC, userC.Id).Error)
+	assert.Equal(t, 1.5, reloadedC.Discount)
+
+	counts, err := CountUserDiscountRules([]int{userA.Id, userB.Id, userC.Id})
+	require.NoError(t, err)
+	assert.Equal(t, map[int]int64{userA.Id: 3}, counts)
+
+	require.NoError(t, MigrateLegacyUserDiscounts(usableGroups))
+	counts, err = CountUserDiscountRules([]int{userA.Id, userB.Id, userC.Id})
+	require.NoError(t, err)
+	assert.Equal(t, map[int]int64{userA.Id: 3}, counts)
+}

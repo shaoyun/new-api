@@ -337,6 +337,21 @@ func InitResources() error {
 		}
 	}
 	model.InitOptionMap()
+	if common.IsMasterNode {
+		// 把旧的用户统一折扣展开为分组-模型规则，已迁移的用户 discount 为 0，重复执行无副作用。
+		err := model.MigrateLegacyUserDiscounts(func(userGroup string) []string {
+			groups := make([]string, 0)
+			for group := range service.GetUserUsableGroups(userGroup) {
+				if group != "auto" {
+					groups = append(groups, group)
+				}
+			}
+			return groups
+		})
+		if err != nil {
+			common.SysError("failed to migrate legacy user discounts: " + err.Error())
+		}
+	}
 
 	// 清理旧的磁盘缓存文件
 	common.CleanupOldCacheFiles()

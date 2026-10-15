@@ -181,3 +181,71 @@ func CountUserDiscountRules(userIds []int) (map[int]int64, error) {
 	}
 	return counts, nil
 }
+
+// MigrateLegacyUserDiscounts 把 users.discount 中的统一折扣展开为 (可用分组 × 该分组已启用模型) 的规则，
+// 然后将 users.discount 清零（列保留以便回滚）。已存在的规则不会被覆盖；discount 不在 (0,1) 内的用户不处理。
+// usableGroups 由调用方提供（model 不能依赖 service），返回用户所属分组可用的分组名。
+// 单个用户失败只记录并继续，最终返回汇总错误。重复执行是幂等的。
+func MigrateLegacyUserDiscounts(usableGroups func(userGroup string) []string) error {
+	var users []User
+	if err := DB.Where("discount > 0 AND discount < 1").Find(&users).Error; err != nil {
+		return err
+	}
+
+	groupsByUserGroup := make(map[string][]string)
+	modelsByGroup := make(map[string][]string)
+	var errs []error
+	for _, user := range users {
+		groups, ok := groupsByUserGroup[user.Group]
+		if !ok {
+			groups = usableGroups(user.Group)
+			groupsByUserGroup[user.Group] = groups
+		}
+
+		now := common.GetTimestamp()
+		var rules []UserDiscountRule
+		seen := make(map[[2]string]struct{})
+		for _, group := range groups {
+			if group == "auto" {
+				continue
+			}
+			models, ok := modelsByGroup[group]
+			if !ok {
+				models = GetGroupEnabledModels(group)
+				modelsByGroup[group] = models
+			}
+			for _, modelName := range models {
+				key := [2]string{group, modelName}
+				// 同一批次内重复的键会让 PostgreSQL 的 ON CONFLICT 报错，先去重。
+				if _, dup := seen[key]; dup {
+					continue
+				}
+				seen[key] = struct{}{}
+				rules = append(rules, UserDiscountRule{
+					UserId:    user.Id,
+					Group:     group,
+					Model:     modelName,
+					Discount:  user.Discount,
+					CreatedAt: now,
+					UpdatedAt: now,
+				})
+			}
+		}
+
+		err := DB.Transaction(func(tx *gorm.DB) error {
+			if len(rules) > 0 {
+				if err := tx.Clauses(clause.OnConflict{DoNothing: true}).CreateInBatches(&rules, 100).Error; err != nil {
+					return err
+				}
+			}
+			return tx.Model(&User{}).Where("id = ?", user.Id).Update("discount", 0).Error
+		})
+		if err != nil {
+			common.SysError(fmt.Sprintf("failed to migrate legacy discount for user %d: %s", user.Id, err.Error()))
+			errs = append(errs, fmt.Errorf("user %d: %w", user.Id, err))
+			continue
+		}
+		InvalidateUserDiscountRuleCache(user.Id)
+	}
+	return errors.Join(errs...)
+}
