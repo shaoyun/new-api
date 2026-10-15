@@ -147,6 +147,23 @@ func appendGroupModelDiscount(other *model.LogOther, info hosttypes.GroupRatioIn
 	other.SetPublic("group_model_discount", discount)
 }
 
+// GroupRatioLogText renders the group ratio part of a consume-log content line.
+// It prints the true (undiscounted) ratio and, when a group-model discount
+// applies, the discount separately, matching the split in other.group_ratio /
+// other.group_model_discount. An info not built by HandleGroupRatio has no
+// BaseGroupRatio, so GroupRatio is used.
+func GroupRatioLogText(info hosttypes.GroupRatioInfo) string {
+	baseRatio := info.BaseGroupRatio
+	if baseRatio == 0 {
+		baseRatio = info.GroupRatio
+	}
+	text := fmt.Sprintf("分组倍率 %.2f", baseRatio)
+	if discount := model.EffectiveUserDiscount(info.GroupModelDiscount); discount < 1 {
+		text += fmt.Sprintf("，折扣 %.2f", discount)
+	}
+	return text
+}
+
 func AppendResponseModelLogInfo(relayInfo *relaycommon.RelayInfo, other *model.LogOther) {
 	if relayInfo == nil || relayInfo.ResponseModel == nil || other == nil {
 		return

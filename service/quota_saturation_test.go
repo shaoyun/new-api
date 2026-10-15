@@ -205,3 +205,70 @@ func TestPreConsumeBillingRejectsNegativeQuotaBeforeDeduction(t *testing.T) {
 	require.Equal(t, http.StatusBadRequest, apiErr.StatusCode)
 	require.Nil(t, info.Billing)
 }
+
+// 分组+模型折扣命中时，日志文本里的“分组倍率”必须是真实倍率并单独标出折扣，
+// 否则详情弹窗会同时出现 分组倍率 1x、折扣 0.8x 和文本里的 0.80。
+func TestRealtimeAndAudioConsumeLogContentSplitsGroupModelDiscount(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	oldBatchUpdate := common.BatchUpdateEnabled
+	common.BatchUpdateEnabled = false
+	t.Cleanup(func() { common.BatchUpdateEnabled = oldBatchUpdate })
+
+	tests := []struct {
+		name        string
+		ratioInfo   hosttypes.GroupRatioInfo
+		wantContain string
+		wantAbsent  []string
+	}{
+		{
+			name:        "discounted shows base ratio and discount",
+			ratioInfo:   hosttypes.GroupRatioInfo{GroupRatio: 1.2, BaseGroupRatio: 1.5, GroupModelDiscount: 0.8},
+			wantContain: "分组倍率 1.50，折扣 0.80",
+			wantAbsent:  []string{"1.20"},
+		},
+		{
+			name:        "undiscounted prints plain group ratio",
+			ratioInfo:   hosttypes.GroupRatioInfo{GroupRatio: 1.5, BaseGroupRatio: 1.5, GroupModelDiscount: 1},
+			wantContain: "分组倍率 1.50",
+			wantAbsent:  []string{"折扣"},
+		},
+		{
+			name:        "base ratio not built by HandleGroupRatio falls back to group ratio",
+			ratioInfo:   hosttypes.GroupRatioInfo{GroupRatio: 1.5},
+			wantContain: "分组倍率 1.50",
+			wantAbsent:  []string{"折扣"},
+		},
+	}
+	for _, tc := range tests {
+		for _, path := range []string{"realtime", "audio"} {
+			t.Run(tc.name+"/"+path, func(t *testing.T) {
+				truncate(t)
+				seedUser(t, 501, 1_000_000)
+				seedToken(t, 601, 501, "log-content-key", 1_000_000)
+				ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+				info := &relaycommon.RelayInfo{
+					ChannelMeta:     &relaycommon.ChannelMeta{ChannelId: 1},
+					UserId:          501,
+					TokenId:         601,
+					TokenKey:        "log-content-key",
+					OriginModelName: "m-log",
+					UsingGroup:      "default",
+					StartTime:       time.Now(),
+					PriceData:       hosttypes.PriceData{ModelRatio: 1, GroupRatioInfo: tc.ratioInfo},
+				}
+				if path == "realtime" {
+					PostWssConsumeQuota(ctx, info, info.OriginModelName, &dto.RealtimeUsage{InputTokens: 100, OutputTokens: 20, TotalTokens: 120}, "")
+				} else {
+					PostAudioConsumeQuota(ctx, info, &dto.Usage{PromptTokens: 100, CompletionTokens: 20, TotalTokens: 120}, "")
+				}
+
+				var log model.Log
+				require.NoError(t, model.LOG_DB.Where("user_id = ?", 501).Take(&log).Error)
+				assert.Contains(t, log.Content, tc.wantContain)
+				for _, absent := range tc.wantAbsent {
+					assert.NotContains(t, log.Content, absent)
+				}
+			})
+		}
+	}
+}
