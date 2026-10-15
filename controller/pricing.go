@@ -1,6 +1,7 @@
 package controller
 
 import (
+	"fmt"
 	"maps"
 
 	"github.com/QuantumNous/new-api/common"
@@ -42,6 +43,7 @@ func GetPricing(c *gin.Context) {
 	groupRatio := map[string]float64{}
 	maps.Copy(groupRatio, ratio_setting.GetGroupRatioCopy())
 	var group string
+	userDiscounts := map[string]map[string]float64{}
 	if exists {
 		user, err := model.GetUserCache(userId.(int))
 		if err == nil {
@@ -64,11 +66,24 @@ func GetPricing(c *gin.Context) {
 		}
 	}
 
+	if exists {
+		ruleMap, err := model.GetUserDiscountRuleMap(userId.(int))
+		if err != nil {
+			common.SysError(fmt.Sprintf("failed to load discount rules for user %d: %s", userId.(int), err.Error()))
+		}
+		for g, models := range ruleMap {
+			if _, ok := usableGroup[g]; ok && len(models) > 0 {
+				userDiscounts[g] = models
+			}
+		}
+	}
+
 	c.JSON(200, gin.H{
 		"success":            true,
 		"data":               pricing,
 		"vendors":            model.GetVendors(),
 		"group_ratio":        groupRatio,
+		"user_discounts":     userDiscounts,
 		"usable_group":       usableGroup,
 		"supported_endpoint": model.GetSupportedEndpointMap(),
 		"auto_groups":        service.GetUserAutoGroup(group),

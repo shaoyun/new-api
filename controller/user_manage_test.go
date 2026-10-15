@@ -19,6 +19,7 @@ import (
 	"github.com/QuantumNous/new-api/model"
 	"github.com/QuantumNous/new-api/service"
 	"github.com/QuantumNous/new-api/service/authz"
+	"github.com/QuantumNous/new-api/setting/ratio_setting"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/go-redis/redis/v8"
 
@@ -823,4 +824,43 @@ func TestUserDiscountRuleAPI(t *testing.T) {
 			assert.Equal(t, float64(0), got["rule-admin"], name)
 		}
 	})
+}
+
+func TestPricingAndGroupsUseBaseRatioWithUserDiscounts(t *testing.T) {
+	// GetPricing builds SQL from the package-level group column name.
+	initModelListColumnNames(t)
+	db := setupManageUserTestDB(t)
+	previousGroupRatio := ratio_setting.GroupRatio2JSONString()
+	require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(`{"default":1,"vip":1.5}`))
+	t.Cleanup(func() {
+		require.NoError(t, ratio_setting.UpdateGroupRatioByJSONString(previousGroupRatio))
+		model.InvalidatePricingCache()
+	})
+	model.InvalidatePricingCache()
+
+	viewer := model.User{Username: "pricing-viewer", Password: "pricing-viewer-hash", Role: common.RoleCommonUser, Status: common.UserStatusEnabled, Group: "default", AuthVersion: 1, AffCode: "pricing-viewer-aff", Discount: 0.5}
+	require.NoError(t, db.Create(&viewer).Error)
+	require.NoError(t, model.UpsertUserDiscountRules(viewer.Id, "vip", []string{"m-a"}, 0.8))
+	require.NoError(t, model.UpsertUserDiscountRules(viewer.Id, "hidden", []string{"m-a"}, 0.5))
+
+	get := func(path string, userId int, handler gin.HandlerFunc) map[string]any {
+		recorder := adminUserRequest(http.MethodGet, path, "", "", service.AuthIdentity{UserID: userId}, common.RoleCommonUser, nil, handler)
+		var resp map[string]any
+		require.NoError(t, common.Unmarshal(recorder.Body.Bytes(), &resp), recorder.Body.String())
+		require.Equal(t, true, resp["success"], recorder.Body.String())
+		return resp
+	}
+
+	groups := get("/api/user/self/groups", viewer.Id, GetUserGroups)["data"].(map[string]any)
+	require.Contains(t, groups, "vip")
+	assert.Equal(t, 1.5, groups["vip"].(map[string]any)["ratio"])
+
+	pricing := get("/api/pricing", viewer.Id, GetPricing)
+	assert.Equal(t, 1.5, pricing["group_ratio"].(map[string]any)["vip"])
+	assert.Equal(t, map[string]any{"vip": map[string]any{"m-a": 0.8}}, pricing["user_discounts"])
+
+	// Viewers without rules still receive the field as an empty object.
+	other := model.User{Username: "pricing-other", Password: "pricing-other-hash", Role: common.RoleCommonUser, Status: common.UserStatusEnabled, Group: "default", AuthVersion: 1, AffCode: "pricing-other-aff"}
+	require.NoError(t, db.Create(&other).Error)
+	assert.Equal(t, map[string]any{}, get("/api/pricing", other.Id, GetPricing)["user_discounts"])
 }
