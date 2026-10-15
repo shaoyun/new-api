@@ -59,7 +59,7 @@ export const userSchema = z.object({
   last_login_at: z.number().optional(),
   DeletedAt: z.any().nullable().optional(),
   remark: z.string().optional(),
-  discount: z.number().optional(),
+  discount_rule_count: z.number().optional(),
   admin_permissions: z
     .record(z.string(), z.record(z.string(), z.boolean()))
     .optional(),
@@ -126,7 +126,6 @@ export interface UserFormData {
   quota?: number // Only used when updating user
   group?: string // Only used when updating user
   remark?: string // Only used when updating user
-  discount?: number // Only used when updating user; 0 clears the discount
   admin_permissions?: AdminPermissionMatrix
 }
 
@@ -145,6 +144,40 @@ export interface ManageUserQuotaPayload {
   action: 'add_quota'
   mode: QuotaAdjustMode
   value: number
+}
+
+// ============================================================================
+// Discount Rule Types
+// ============================================================================
+
+/** A per-user discount for one exact (group, model) pair; timestamps in seconds */
+export interface UserDiscountRule {
+  id: number
+  user_id: number
+  group: string
+  model: string
+  discount: number
+  created_at: number
+  updated_at: number
+}
+
+/** A group the target user can use, with the enabled models in that group */
+export interface UserDiscountGroupOption {
+  group: string
+  desc: string
+  ratio: number
+  models: string[]
+}
+
+export interface UserDiscountOptions {
+  groups: UserDiscountGroupOption[]
+}
+
+/** Upsert payload: overwrites existing (user, group, model) rules */
+export interface UpsertUserDiscountRulesPayload {
+  group: string
+  models: string[]
+  discount: number
 }
 
 // ============================================================================

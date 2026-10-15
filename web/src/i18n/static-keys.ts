@@ -896,4 +896,6 @@ export const STATIC_I18N_KEYS = [
   'Verification method',
   'Admin permissions updated',
   'Provider ID',
+  // User discount rule form validation (features/users/lib/discount-rules.ts).
+  'Enter a discount greater than 0 and less than 1',
 ] as const

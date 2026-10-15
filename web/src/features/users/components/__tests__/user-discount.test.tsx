@@ -17,23 +17,26 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 For commercial licensing, please contact support@quantumnous.com
 */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { cleanup, render, screen, waitFor } from '@testing-library/react'
+import {
+  flexRender,
+  getCoreRowModel,
+  useReactTable,
+} from '@tanstack/react-table'
+import { render, screen, waitFor } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { TooltipProvider } from '@/components/ui/tooltip'
 import { api } from '@/lib/api'
 import { useAuthStore } from '@/stores/auth-store'
 
 import {
   USER_FORM_DEFAULT_VALUES,
   transformFormDataToPayload,
-  transformUserToFormDefaults,
-  userFormSchema,
 } from '../../lib/user-form'
 import type { User } from '../../types'
+import { useUsersColumns } from '../users-columns'
 import { UsersMutateDrawer } from '../users-mutate-drawer'
 import { UsersProvider } from '../users-provider'
-
-const formData = { ...USER_FORM_DEFAULT_VALUES, username: 'alice' }
 
 const listRow: User = {
   id: 1,
@@ -45,134 +48,109 @@ const listRow: User = {
   used_quota: 0,
   request_count: 0,
   group: 'default',
-  discount: 0.8,
 }
 
+const clients: QueryClient[] = []
+
 afterEach(() => {
-  cleanup()
+  clients.splice(0).forEach((client) => client.clear())
   vi.restoreAllMocks()
   useAuthStore.getState().auth.reset()
 })
 
-describe('user discount form logic', () => {
-  it('sends the entered discount when editing a user', () => {
+describe('user edit payload without the flat discount', () => {
+  it('omits discount when updating a user', () => {
     const payload = transformFormDataToPayload(
-      { ...formData, discount: 0.8 },
+      { ...USER_FORM_DEFAULT_VALUES, username: 'alice' },
       1
     )
-
-    expect(payload.discount).toBe(0.8)
-  })
-
-  it('sends discount 0 when editing with an empty discount so it can be cleared', () => {
-    const payload = transformFormDataToPayload(
-      { ...formData, discount: undefined },
-      1
-    )
-
-    expect(payload.discount).toBe(0)
-  })
-
-  it('omits discount when creating a user', () => {
-    const payload = transformFormDataToPayload({ ...formData, discount: 0.8 })
 
     expect(payload).not.toHaveProperty('discount')
   })
+})
 
-  it('rejects a discount above 1', () => {
-    const result = userFormSchema.safeParse({ ...formData, discount: 1.2 })
-
-    expect(result.success).toBe(false)
-  })
-
-  it('rejects a negative discount', () => {
-    const result = userFormSchema.safeParse({ ...formData, discount: -0.1 })
-
-    expect(result.success).toBe(false)
-  })
-
-  it('accepts an empty discount', () => {
-    const result = userFormSchema.safeParse({
-      ...formData,
-      discount: undefined,
+describe('user edit drawer without the flat discount', () => {
+  it('renders no discount input once the user detail has loaded', async () => {
+    useAuthStore
+      .getState()
+      .auth.setUser({ id: 9, username: 'operator', role: 100 })
+    vi.spyOn(api, 'get').mockImplementation(async (url) => {
+      if (url === '/api/group/') return { data: { success: true, data: [] } }
+      if (url === `/api/user/${listRow.id}`) {
+        return { data: { success: true, data: listRow } }
+      }
+      return { data: { success: true, data: { resources: [], roles: [] } } }
     })
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    })
+    clients.push(client)
+    render(
+      <QueryClientProvider client={client}>
+        <UsersProvider>
+          <UsersMutateDrawer
+            open
+            onOpenChange={() => undefined}
+            currentRow={listRow}
+          />
+        </UsersProvider>
+      </QueryClientProvider>
+    )
 
-    expect(result.success).toBe(true)
-  })
-
-  it('fills the form discount from the loaded user', () => {
-    const user: User = {
-      id: 1,
-      username: 'alice',
-      display_name: 'Alice',
-      role: 1,
-      status: 1,
-      quota: 0,
-      used_quota: 0,
-      request_count: 0,
-      group: 'default',
-      discount: 0.75,
-    }
-
-    expect(transformUserToFormDefaults(user).discount).toBe(0.75)
-  })
-})
-
-describe('user discount seeding from the list row', () => {
-  it('seeds the form discount from a list row with a discount', () => {
-    expect(transformUserToFormDefaults(listRow).discount).toBe(0.8)
-  })
-
-  it('seeds an empty form discount from a list row without a discount', () => {
-    expect(
-      transformUserToFormDefaults({ ...listRow, discount: 0 }).discount
-    ).toBeUndefined()
-  })
-})
-
-function renderEditDrawer(loadUser: () => Promise<unknown>) {
-  useAuthStore
-    .getState()
-    .auth.setUser({ id: 9, username: 'operator', role: 100 })
-  vi.spyOn(api, 'get').mockImplementation(async (url) => {
-    if (url === '/api/group/') return { data: { success: true, data: [] } }
-    if (url === `/api/user/${listRow.id}`) return loadUser()
-    return { data: { success: true, data: { resources: [], roles: [] } } }
-  })
-  const client = new QueryClient({
-    defaultOptions: { queries: { retry: false } },
-  })
-  render(
-    <QueryClientProvider client={client}>
-      <UsersProvider>
-        <UsersMutateDrawer
-          open
-          onOpenChange={() => undefined}
-          currentRow={listRow}
-        />
-      </UsersProvider>
-    </QueryClientProvider>
-  )
-}
-
-describe('user discount edit drawer', () => {
-  it('shows the stored discount and keeps save disabled when the detail load fails', async () => {
-    renderEditDrawer(() => Promise.reject(new Error('network down')))
-
-    const input = await screen.findByLabelText('User discount')
-    await waitFor(() => expect(input).toHaveValue(0.8))
-    expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled()
-  })
-
-  it('enables save once the user detail has loaded', async () => {
-    renderEditDrawer(async () => ({
-      data: { success: true, data: { ...listRow, discount: 0.7 } },
-    }))
-
-    const input = await screen.findByLabelText('User discount')
-    await waitFor(() => expect(input).toHaveValue(0.7))
     await waitFor(() =>
       expect(screen.getByRole('button', { name: 'Save changes' })).toBeEnabled()
     )
+    expect(screen.queryByLabelText(/discount/i)).not.toBeInTheDocument()
+  })
+})
+
+function GroupColumnTable(props: { user: User }) {
+  const columns = useUsersColumns().filter(
+    (column) => 'accessorKey' in column && column.accessorKey === 'group'
+  )
+  const table = useReactTable({
+    columns,
+    data: [props.user],
+    getCoreRowModel: getCoreRowModel(),
+  })
+  return (
+    <table>
+      <tbody>
+        {table.getRowModel().rows.map((row) => (
+          <tr key={row.id}>
+            {row.getVisibleCells().map((cell) => (
+              <td key={cell.id}>
+                {flexRender(cell.column.columnDef.cell, cell.getContext())}
+              </td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
+}
+
+function renderGroupCell(user: User) {
+  render(
+    <TooltipProvider>
+      <GroupColumnTable user={user} />
+    </TooltipProvider>
+  )
+}
+
+describe('users list discount rule badge', () => {
+  it('shows the rule count beside the group when the user has rules', () => {
+    renderGroupCell({ ...listRow, discount_rule_count: 3 })
+
+    expect(screen.getByText('3 discount rules')).toBeInTheDocument()
+  })
+
+  it.each([
+    ['zero rules', { discount_rule_count: 0 }],
+    ['no rule count', {}],
+  ])('hides the rule badge for a user with %s', (_name, extra) => {
+    renderGroupCell({ ...listRow, ...extra })
+
+    expect(screen.queryByText(/discount rules/)).not.toBeInTheDocument()
   })
 })
